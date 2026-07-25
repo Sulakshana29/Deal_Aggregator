@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: deal-aggregator
+  labels:
+    app: backend
+    tier: application
+spec:
+  replicas: 2              # 2 replicas = horizontal scaling demo
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        tier: application
+    spec:
+      containers:
+        - name: backend
+          # Replace with your actual image after pushing to GHCR in Phase 6
+          # e.g. ghcr.io/<your-github-username>/deal-aggregator-backend:latest
+          image: deal-aggregator-backend:latest
+          imagePullPolicy: Never     # use local Minikube image cache (no registry needed for Phase 4)
+          ports:
+            - containerPort: 5000
+
+          # Pull non-sensitive config from ConfigMap
+          envFrom:
+            - configMapRef:
+                name: backend-config
+
+          # ── Liveness Probe ─────────────────────────────────────────────────
+          # K8s restarts the pod if the /health endpoint stops responding
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+
+          # ── Readiness Probe ────────────────────────────────────────────────
+          # K8s only sends traffic to a pod that returns 200 from /health
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"

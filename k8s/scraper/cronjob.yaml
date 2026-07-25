@@ -1,0 +1,66 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: deal-scraper
+  namespace: deal-aggregator
+  labels:
+    app: scraper
+    tier: batch
+spec:
+  # ── Schedule ────────────────────────────────────────────────────────────────
+  # Run every 6 hours (at 00:00, 06:00, 12:00, 18:00 UTC)
+  # Cron format: minute  hour  day-of-month  month  day-of-week
+  schedule: "0 */6 * * *"
+
+  # ── Job History ─────────────────────────────────────────────────────────────
+  successfulJobsHistoryLimit: 3     # keep last 3 successful runs for logs
+  failedJobsHistoryLimit: 3         # keep last 3 failures for debugging
+
+  # ── Concurrency Policy ──────────────────────────────────────────────────────
+  # Forbid: if previous job is still running, skip this run
+  # (prevents duplicate scrapes + DB write conflicts)
+  concurrencyPolicy: Forbid
+
+  jobTemplate:
+    spec:
+      # Retry failed pods up to 2 times before marking job as failed
+      backoffLimit: 2
+
+      # Kill job if it takes more than 10 minutes (network hang protection)
+      activeDeadlineSeconds: 600
+
+      template:
+        metadata:
+          labels:
+            app: scraper
+        spec:
+          # Never restart — this is a one-shot job; K8s handles retries via backoffLimit
+          restartPolicy: Never
+
+          containers:
+            - name: scraper
+              image: deal-aggregator-scraper:latest
+              imagePullPolicy: Never   # Minikube local image cache
+
+              # Load env from ConfigMap
+              envFrom:
+                - configMapRef:
+                    name: scraper-config
+
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+
+# ── Useful kubectl commands ──────────────────────────────────────────────────
+# Watch CronJob status:
+#   kubectl get cronjob deal-scraper -n deal-aggregator -w
+#
+# Trigger manually (ad-hoc run):
+#   kubectl create job --from=cronjob/deal-scraper manual-scrape-$(date +%s) -n deal-aggregator
+#
+# View logs from last run:
+#   kubectl logs -l app=scraper -n deal-aggregator --tail=100

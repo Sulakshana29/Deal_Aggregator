@@ -1,0 +1,15 @@
+{
+  "name": "deal-aggregator-scraper",
+  "version": "1.0.0",
+  "description": "Scraper for mypromo.lk — pulls Sri Lankan bank card deals into MongoDB",
+  "main": "scrape.js",
+  "scripts": {
+    "start": "node scrape.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.2",
+    "cheerio": "^1.0.0",
+    "dotenv": "^16.4.5",
+    "mongoose": "^8.4.0"
+  }
+}

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend              # frontend nginx proxies to this name via /api/
+  namespace: deal-aggregator
+  labels:
+    app: backend
+    tier: application
+spec:
+  selector:
+    app: backend
+  ports:
+    - protocol: TCP
+      port: 5000
+      targetPort: 5000
+  # ClusterIP — only reachable inside cluster
+  # Frontend Nginx proxies /api/ → http://backend:5000/
+  type: ClusterIP

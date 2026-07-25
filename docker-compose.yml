@@ -1,0 +1,86 @@
+services:
+  # ─── 1. Database Tier: MongoDB ──────────────────────────────────────────────
+  mongodb:
+    image: mongo:latest
+    container_name: deal-aggregator-db
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - deal-network
+    healthcheck:
+      # mongosh exits 0 when the server accepts connections
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ─── 2. Application Tier: Node.js Express API ───────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: deal-aggregator-backend
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - MONGO_URI=mongodb://mongodb:27017/deal-aggregator
+      - CLIENT_ORIGIN=http://localhost:3000
+    depends_on:
+      mongodb:
+        condition: service_healthy   # waits for real DB readiness, not just container start
+    networks:
+      - deal-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ─── 3. Presentation Tier: React Vite UI served via Nginx ───────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: deal-aggregator-frontend
+    restart: always
+    ports:
+      - "3000:80"
+    depends_on:
+      backend:
+        condition: service_healthy   # waits for API to be ready before frontend starts
+    networks:
+      - deal-network
+
+  # ─── 4. Scraper: one-shot job (run manually or on a schedule) ───────────────
+  # Usage: docker compose --profile scraper run --rm scraper
+  scraper:
+    build:
+      context: ./scraper
+      dockerfile: Dockerfile
+    container_name: deal-aggregator-scraper
+    profiles:
+      - scraper                      # not started by default with `docker compose up`
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/deal-aggregator
+      - RETRY_DELAY_MS=3000
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - deal-network
+    restart: "no"                    # one-shot — exit after scrape completes
+
+# ─── Persistent Volumes & Virtual Networks ────────────────────────────────────
+volumes:
+  mongo-data:
+
+networks:
+  deal-network:
+    driver: bridge

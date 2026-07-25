@@ -1,0 +1,24 @@
+# ─── Dependencies ────────────────────────────────────────────────────
+node_modules/
+
+# ─── Environment / Secrets ───────────────────────────────────────────
+# NEVER commit real .env files — use .env.example as the template
+.env
+.env.local
+.env.*.local
+
+# ─── Build outputs ───────────────────────────────────────────────────
+frontend/dist/
+frontend/build/
+
+# ─── OS artifacts ────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ─── Editor metadata ─────────────────────────────────────────────────
+.vscode/
+.idea/
+
+# ─── Docker ──────────────────────────────────────────────────────────
+# docker-compose overrides with local secrets (added in Phase 3)
+docker-compose.override.yml

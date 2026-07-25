@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mongodb
+  namespace: deal-aggregator
+  labels:
+    app: mongodb
+    tier: database
+spec:
+  replicas: 1               # MongoDB is stateful — always 1 replica here
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+        tier: database
+    spec:
+      containers:
+        - name: mongodb
+          image: mongo:latest
+          ports:
+            - containerPort: 27017
+
+          # Mount the PVC at MongoDB's data directory
+          volumeMounts:
+            - name: mongo-storage
+              mountPath: /data/db
+
+          # Readiness probe — K8s only sends traffic when DB is ready
+          readinessProbe:
+            exec:
+              command:
+                - mongosh
+                - --quiet
+                - --eval
+                - "db.adminCommand('ping').ok"
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 5
+
+          # Liveness probe — K8s restarts the pod if DB becomes unresponsive
+          livenessProbe:
+            exec:
+              command:
+                - mongosh
+                - --quiet
+                - --eval
+                - "db.adminCommand('ping').ok"
+            initialDelaySeconds: 30
+            periodSeconds: 20
+            failureThreshold: 3
+
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+      volumes:
+        - name: mongo-storage
+          persistentVolumeClaim:
+            claimName: mongodb-pvc   # must match pvc.yaml

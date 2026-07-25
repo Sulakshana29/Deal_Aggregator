@@ -1,0 +1,28 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Apply everything with: kubectl apply -k k8s/
+# This ensures namespace is created before all other resources
+
+resources:
+  # 1. Namespace first (everything else lives inside it)
+  - namespace.yaml
+
+  # 2. Database tier
+  - mongodb/pvc.yaml
+  - mongodb/deployment.yaml
+  - mongodb/service.yaml
+
+  # 3. Application tier
+  - backend/configmap.yaml
+  - backend/secret.yaml
+  - backend/deployment.yaml
+  - backend/service.yaml
+
+  # 4. Presentation tier
+  - frontend/deployment.yaml
+  - frontend/service.yaml
+
+  # 5. Batch tier
+  - scraper/configmap.yaml
+  - scraper/cronjob.yaml

@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: deal-aggregator
+  labels:
+    app.kubernetes.io/name: deal-aggregator
+    app.kubernetes.io/part-of: deal-aggregator
