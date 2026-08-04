@@ -40,7 +40,7 @@ export default function DealList({ deals, loading, onDelete, onShare, adminMode,
           <div className="empty-state__icon">🔍</div>
           <p className="empty-state__text">No deals match your filters.</p>
           <p className="empty-state__suggestion">
-            Try removing a filter, enabling "Show expired", or clearing all.
+            Try removing a filter, enabling &quot;Show expired&quot;, or clearing all.
           </p>
           <button className="empty-state__reset" onClick={onReset}>
             Clear all filters

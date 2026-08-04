@@ -1,0 +1,166 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  # ─── 1. CODE QUALITY: Lint & Test ──────────────────────────────────────────
+  code-quality:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # Backend Checks
+      - name: Install Backend Dependencies
+        working-directory: ./backend
+        run: npm ci
+        
+      - name: Lint Backend
+        working-directory: ./backend
+        run: npm run lint
+        
+      - name: Test Backend
+        working-directory: ./backend
+        run: npm run test
+
+      # Frontend Checks
+      - name: Install Frontend Dependencies
+        working-directory: ./frontend
+        run: npm ci
+        
+      - name: Lint Frontend
+        working-directory: ./frontend
+        run: npm run lint
+        
+      - name: Test Frontend
+        working-directory: ./frontend
+        run: npm run test
+
+  # ─── 2. DOCKER BUILD & SCAN ──────────────────────────────────────────────
+  docker-build-scan:
+    name: Build & Scan Docker Images
+    runs-on: ubuntu-latest
+    needs: code-quality # Wait for tests to pass
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Build Backend
+      - name: Build Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: false
+          load: true
+          tags: local/deal-aggregator-backend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Scan Backend with Trivy
+      - name: Scan Backend Image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'local/deal-aggregator-backend:latest'
+          format: 'table'
+          exit-code: '0' # Set to 1 to fail the build on vulnerabilities
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      # Build Frontend
+      - name: Build Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: false
+          load: true
+          tags: local/deal-aggregator-frontend:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Scan Frontend with Trivy
+      - name: Scan Frontend Image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: 'local/deal-aggregator-frontend:latest'
+          format: 'table'
+          exit-code: '0'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+
+      # Build Scraper
+      - name: Build Scraper Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./scraper
+          push: false
+          load: true
+          tags: local/deal-aggregator-scraper:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─── 3. DOCKER PUSH (Runs only if secrets are set) ──────────────────────
+  docker-push:
+    name: Push to Docker Hub
+    runs-on: ubuntu-latest
+    needs: docker-build-scan
+    # Only run if Docker Hub username is configured
+    if: ${{ github.event_name == 'push' && env.DOCKERHUB_USERNAME != '' }}
+    env:
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Backend Push
+      - name: Build and Push Backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/deal-aggregator-backend:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/deal-aggregator-backend:${{ github.sha }}
+
+      # Frontend Push
+      - name: Build and Push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/deal-aggregator-frontend:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/deal-aggregator-frontend:${{ github.sha }}
+
+      # Scraper Push
+      - name: Build and Push Scraper
+        uses: docker/build-push-action@v5
+        with:
+          context: ./scraper
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/deal-aggregator-scraper:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/deal-aggregator-scraper:${{ github.sha }}

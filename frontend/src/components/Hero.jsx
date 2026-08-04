@@ -41,7 +41,7 @@ export default function Hero({ search, onSearch, activeCount, supportedBanksCoun
         {/* Subtitle */}
         <p className="hero__subtitle">
           Stop hopping across 10 different bank websites. Discover stackable card promos,
-          instant cashback, and 0% interest instalments from Sri Lanka's top banks and BNPL providers.
+          instant cashback, and 0% interest instalments from Sri Lanka&apos;s top banks and BNPL providers.
         </p>
 
         {/* Hero Search Box */}

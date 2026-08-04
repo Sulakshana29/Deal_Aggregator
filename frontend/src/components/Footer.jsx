@@ -17,7 +17,7 @@ export default function Footer({ onBankClick, onCategoryClick }) {
               <span className="footer__logo-text">DealVault LK</span>
             </div>
             <p className="footer__bio">
-              Sri Lanka's premier unified aggregator for credit card discounts, debit promotions,
+              Sri Lanka&apos;s premier unified aggregator for credit card discounts, debit promotions,
               and 0% interest Buy Now Pay Later (BNPL) offers.
             </p>
             <div className="footer__badges">
