@@ -119,7 +119,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: docker-build-scan
     # Only run if Docker Hub username is configured
-    if: ${{ github.event_name == 'push' && env.DOCKERHUB_USERNAME != '' }}
+    if: ${{ github.event_name == 'push' && secrets.DOCKERHUB_USERNAME != '' }}
     env:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
     steps:
