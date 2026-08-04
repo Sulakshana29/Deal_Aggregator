@@ -19,13 +19,14 @@
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| 1 | Core App (React + Express + MongoDB) | ✅ Done |
-| 2 | Scraper (axios + cheerio → MongoDB upsert) | ✅ Done |
-| 3 | Containerize (multi-stage Docker + Compose) | ✅ Done |
-| 4 | Kubernetes (Minikube — Deployments, PVC, CronJob) | 🚧 In Progress |
-| 5 | Security Hardening (Helmet, rate-limit, non-root, securityContext) | ⏳ Pending |
-| 6 | CI/CD (GitHub Actions → GHCR → K8s) | ⏳ Pending |
-| 7 | README & Polish (architecture diagram, Helm chart) | ⏳ Pending |
+| 1 | Finish the core application (React + Express + MongoDB) | ✅ Done |
+| 2 | Get Docker Compose working (multi-stage builds) | ✅ Done |
+| 3 | CI Pipeline (GitHub Actions, Linting, Testing, Trivy, Docker Hub) | ✅ Done |
+| 4 | CD Pipeline to EC2 (Automated deployment on push) | ⏳ Pending |
+| 5 | Monitoring (Prometheus + Grafana) | ⏳ Pending |
+| 6 | Logging (Loki or ELK Stack) | ⏳ Pending |
+| 7 | Refactor CI into multiple jobs for efficiency | ⏳ Pending |
+| 8 | Move to Kubernetes (Deployments, Services, ConfigMaps, CronJob) | ⏳ Pending |
 
 ## Running Locally
 
@@ -56,7 +57,7 @@ cd scraper && npm install && node scrape.js
 ```
 Requires a local MongoDB instance on port 27017.
 
-### Option C — Kubernetes (Phase 4)
+### Option C — Kubernetes (Phase 8)
 ```bash
 minikube start
 kubectl apply -f k8s/

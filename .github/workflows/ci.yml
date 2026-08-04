@@ -164,3 +164,35 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/deal-aggregator-scraper:latest
             ${{ secrets.DOCKERHUB_USERNAME }}/deal-aggregator-scraper:${{ github.sha }}
+
+  # ─── 4. CONTINUOUS DEPLOYMENT (CD) TO EC2 ───────────────────────────────
+  deploy-to-ec2:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+    needs: docker-push
+    if: ${{ github.event_name == 'push' && secrets.EC2_HOST != '' }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Copy docker-compose.prod.yml to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "docker-compose.prod.yml"
+          target: "/home/${{ secrets.EC2_USERNAME }}/deal-aggregator"
+
+      - name: Pull Images and Restart Containers
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /home/${{ secrets.EC2_USERNAME }}/deal-aggregator
+            # Pull latest images from Docker Hub
+            docker compose -f docker-compose.prod.yml pull
+            # Restart services with the new images
+            docker compose -f docker-compose.prod.yml up -d

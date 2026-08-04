@@ -1,0 +1,78 @@
+services:
+  # ─── 1. Database Tier: MongoDB ──────────────────────────────────────────────
+  mongodb:
+    image: mongo:latest
+    container_name: deal-aggregator-db
+    restart: always
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    networks:
+      - deal-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ─── 2. Application Tier: Node.js Express API ───────────────────────────────
+  backend:
+    image: dockersula/deal-aggregator-backend:latest
+    container_name: deal-aggregator-backend
+    restart: always
+    ports:
+      - "5000:5000"
+    environment:
+      - PORT=5000
+      - MONGO_URI=mongodb://mongodb:27017/deal-aggregator
+      # Hardcode EC2 public IP or domain later, but for now we allow anything for demo
+      - CLIENT_ORIGIN=*
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - deal-network
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5000/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ─── 3. Presentation Tier: React Vite UI served via Nginx ───────────────────
+  frontend:
+    image: dockersula/deal-aggregator-frontend:latest
+    container_name: deal-aggregator-frontend
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - deal-network
+
+  # ─── 4. Scraper: one-shot job (run manually or on a schedule) ───────────────
+  scraper:
+    image: dockersula/deal-aggregator-scraper:latest
+    container_name: deal-aggregator-scraper
+    profiles:
+      - scraper
+    environment:
+      - MONGO_URI=mongodb://mongodb:27017/deal-aggregator
+      - RETRY_DELAY_MS=3000
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    networks:
+      - deal-network
+    restart: "no"
+
+volumes:
+  mongo-data:
+
+networks:
+  deal-network:
+    driver: bridge
