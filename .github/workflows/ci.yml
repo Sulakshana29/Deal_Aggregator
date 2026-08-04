@@ -170,7 +170,7 @@ jobs:
     name: Deploy to EC2
     runs-on: ubuntu-latest
     needs: docker-push
-    if: ${{ github.event_name == 'push' && secrets.EC2_HOST != '' }}
+    if: ${{ github.event_name == 'push' }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
