@@ -1,7 +1,7 @@
 # One-shot scraper container — runs scrape.js then exits
 # Used by: docker compose --profile scraper run --rm scraper
 # Used by: Kubernetes CronJob (Phase 4)
-FROM node:20-alpine
+FROM node:24-alpine
 
 WORKDIR /usr/src/app
 
@@ -9,7 +9,7 @@ ENV NODE_ENV=production
 
 # Leverage layer caching for dependencies
 COPY package*.json ./
-RUN npm ci --only=production
+RUN npm install --only=production
 
 # Copy scraper source files
 COPY scrape.js   ./

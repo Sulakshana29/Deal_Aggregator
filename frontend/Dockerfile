@@ -1,11 +1,11 @@
 # Stage 1: Build React/Vite bundle
-FROM node:20-alpine AS builder
+FROM node:24-alpine AS builder
 
 WORKDIR /app
 
 # Install dependencies using package-lock for reproducible builds
 COPY package*.json ./
-RUN npm ci
+RUN npm install
 
 # Copy source code and run production build
 COPY . .

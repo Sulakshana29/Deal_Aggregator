@@ -1,5 +1,5 @@
 # Stage 1: Production Base Image
-FROM node:20-alpine AS production
+FROM node:24-alpine AS production
 
 # Set working directory inside container
 WORKDIR /usr/src/app
@@ -11,7 +11,7 @@ ENV NODE_ENV=production
 COPY package*.json ./
 
 # Install only production dependencies cleanly
-RUN npm ci --only=production
+RUN npm install --only=production
 
 # Copy application source code
 COPY src ./src
