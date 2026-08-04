@@ -19,8 +19,6 @@ export default function Navbar({
   adminMode,
   onToggleAdmin,
   formatLastUpdated,
-  theme,
-  onToggleTheme,
 }) {
   return (
     <header className="navbar">
@@ -73,15 +71,6 @@ export default function Navbar({
               <strong>{activeCount}</strong> Active • 🤖 <strong>{scrapedCount}</strong> Live
             </span>
           </div>
-
-          {/* Theme Toggle */}
-          <button
-            className="theme-toggle-btn"
-            onClick={onToggleTheme}
-            title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          >
-            {theme === 'dark' ? '☀️ Light' : '🌙 Dark'}
-          </button>
 
           {/* Admin mode toggle */}
           <button

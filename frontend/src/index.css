@@ -3,105 +3,56 @@
    DealVault LK | Unified Sri Lanka Bank Card & BNPL Aggregator
    ═══════════════════════════════════════════════════════════════════ */
 
-/* ─── Design Tokens ────────────────────────────────────────────────── */
-:root {
-  --bg-base:          #070911;
-  --bg-surface:       #0e1322;
-  --bg-card:          #131a2e;
-  --bg-card-hover:    #182138;
-  --bg-input:         #0a0f1c;
-  --bg-badge:         rgba(255,255,255,0.06);
-  --bg-badge-hover:   rgba(255,255,255,0.12);
-  --bg-overlay:       rgba(7, 9, 17, 0.85);
+/* ─── Premium Design Tokens ────────────────────────────────────────── */
+:root, [data-theme="light"], [data-theme="dark"] {
+  --bg-base:          #0A0A0A;
+  --bg-surface:       #111111;
+  --bg-card:          #161616;
+  --bg-card-hover:    #1C1C1C;
+  --bg-input:         #111111;
+  --bg-badge:         rgba(255, 255, 255, 0.05);
+  --bg-badge-hover:   rgba(255, 255, 255, 0.08);
+  --bg-overlay:       rgba(0, 0, 0, 0.7);
 
-  --hero-bg:          radial-gradient(circle at 50% 0%, rgba(99,102,241,0.14) 0%, #070911 75%);
-  --hero-search-bg:   rgba(19, 26, 46, 0.95);
-  --hero-stat-bg:     rgba(14, 19, 34, 0.7);
-  --spotlight-bg:     linear-gradient(145deg, rgba(26,34,53,0.9) 0%, rgba(19,26,46,0.9) 100%);
+  --hero-bg:          radial-gradient(circle at 50% 0%, rgba(129,140,248,0.1) 0%, transparent 60%), #0A0A0A;
+  --hero-search-bg:   rgba(22, 22, 22, 0.7);
+  --hero-stat-bg:     rgba(22, 22, 22, 0.5);
+  --spotlight-bg:     rgba(22, 22, 22, 0.6);
 
-  --gradient-brand:   linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-  --gradient-glow:    radial-gradient(circle at center, rgba(99,102,241,0.22) 0%, rgba(139,92,246,0.06) 50%, transparent 70%);
-  --gradient-callout: linear-gradient(135deg, rgba(99,102,241,0.2) 0%, rgba(139,92,246,0.12) 100%);
+  --gradient-brand:   linear-gradient(135deg, #818cf8 0%, #c084fc 100%);
+  --gradient-glow:    radial-gradient(circle at center, rgba(129,140,248,0.15) 0%, transparent 70%);
+  --gradient-callout: linear-gradient(135deg, rgba(129,140,248,0.1) 0%, rgba(192,132,252,0.1) 100%);
 
-  --accent-primary:   #6366f1;
-  --accent-secondary: #8b5cf6;
-  --accent-green:     #10b981;
-  --accent-amber:     #f59e0b;
-  --accent-rose:      #f43f5e;
-  --accent-cyan:      #06b6d4;
+  --accent-primary:   #818cf8;
+  --accent-secondary: #c084fc;
+  --accent-green:     #34d399;
+  --accent-amber:     #fbbf24;
+  --accent-rose:      #fb7185;
+  --accent-cyan:      #22d3ee;
 
-  --text-primary:     #f8fafc;
-  --text-secondary:   #94a3b8;
-  --text-muted:       #475569;
-  --text-inverse:     #090E17;
-  --text-inverse-bg:  #ffffff;
+  --text-primary:     #EDEDED;
+  --text-secondary:   #A1A1AA;
+  --text-muted:       #71717A;
+  --text-inverse:     #0A0A0A;
+  --text-inverse-bg:  #EDEDED;
 
-  --border:           rgba(255,255,255,0.08);
-  --border-badge:     rgba(255,255,255,0.12);
-  --border-focus:     #6366f1;
-  --border-subtle:    rgba(255,255,255,0.04);
+  --border:           rgba(255, 255, 255, 0.08);
+  --border-badge:     rgba(255, 255, 255, 0.1);
+  --border-focus:     rgba(129, 140, 248, 0.5);
+  --border-subtle:    rgba(255, 255, 255, 0.04);
 
-  --shadow-sm:        0 2px 8px rgba(0,0,0,0.3);
-  --shadow-card:      0 8px 30px rgba(0,0,0,0.45);
-  --shadow-glow:      0 0 45px rgba(99,102,241,0.18);
+  --shadow-sm:        0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-card:      0 4px 12px rgba(0, 0, 0, 0.5);
+  --shadow-card-hover: 0 12px 30px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(129, 140, 248, 0.1);
+  --shadow-glow:      0 0 20px rgba(129, 140, 248, 0.25);
 
   --radius-sm:        8px;
   --radius-md:        12px;
-  --radius-lg:        18px;
-  --radius-xl:        24px;
+  --radius-lg:        16px;
+  --radius-xl:        20px;
 
-  --font-body:        'Inter', system-ui, -apple-system, sans-serif;
-  --font-heading:     'Space Grotesk', system-ui, -apple-system, sans-serif;
-}
-
-[data-theme="light"] {
-  /* ── Backgrounds ── */
-  --bg-base:          #fafafa;
-  --bg-surface:       #f4f4f5;
-  --bg-card:          #ffffff;
-  --bg-card-hover:    #fafafa;
-  --bg-input:         #ffffff;
-  --bg-badge:         #f4f4f5;
-  --bg-badge-hover:   #e4e4e7;
-  --bg-overlay:       rgba(9, 9, 11, 0.55);
-
-  /* ── Section-specific backgrounds ── */
-  --hero-bg:          linear-gradient(160deg, #eef2ff 0%, #fafafa 55%);
-  --hero-search-bg:   #ffffff;
-  --hero-stat-bg:     #ffffff;
-  --spotlight-bg:     #ffffff;
-
-  /* ── Brand gradients ── */
-  --gradient-brand:   linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-  --gradient-glow:    radial-gradient(circle at center, rgba(79,70,229,0.14) 0%, rgba(124,58,237,0.04) 55%, transparent 75%);
-  --gradient-callout: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
-
-  /* ── Accent palette ── */
-  --accent-primary:   #4f46e5;
-  --accent-secondary: #7c3aed;
-  --accent-green:     #059669;
-  --accent-amber:     #b45309;
-  --accent-rose:      #be123c;
-  --accent-cyan:      #0e7490;
-
-  /* ── Typography ── */
-  --text-primary:     #09090b;
-  --text-secondary:   #52525b;
-  --text-muted:       #a1a1aa;
-  --text-inverse:     #ffffff;
-  --text-inverse-bg:  #09090b;
-
-  /* ── Borders ── */
-  --border:           #e4e4e7;
-  --border-badge:     #d4d4d8;
-  --border-focus:     #4f46e5;
-  --border-subtle:    #f4f4f5;
-
-  /* ── Shadows — layered for real depth ── */
-  --shadow-sm:        0 1px 3px rgba(9,9,11,0.06), 0 1px 2px rgba(9,9,11,0.04);
-  --shadow-card:      0 4px 12px rgba(9,9,11,0.05), 0 2px 4px rgba(9,9,11,0.04);
-  --shadow-card-hover: 0 12px 32px rgba(79,70,229,0.12), 0 4px 12px rgba(9,9,11,0.06);
-  --shadow-glow:      0 0 0 3px rgba(79,70,229,0.15);
+  --font-body:        'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-heading:     'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
 /* ─── Base Reset ───────────────────────────────────────────────────── */
@@ -145,12 +96,12 @@ input, select { font-family: inherit; }
   position: sticky;
   top: 0;
   z-index: 1000;
-  background: rgba(10, 15, 29, 0.92);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.25), 0 1px 0 rgba(255, 255, 255, 0.06);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  background: rgba(10, 10, 10, 0.75);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.02);
+  transition: all 0.3s ease;
 }
 
 .navbar__container {
@@ -654,40 +605,46 @@ input, select { font-family: inherit; }
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  background: var(--bg-surface);
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border);
   color: var(--text-secondary);
   font-size: 14px;
   font-weight: 500;
-  padding: 10px 18px;
-  border-radius: var(--radius-md);
+  padding: 10px 20px;
+  border-radius: 9999px;
   white-space: nowrap;
-  transition: all 0.2s ease;
+  transition: all 0.25s ease;
 }
 .category-tab:hover {
-  background: var(--bg-card);
+  background: rgba(255, 255, 255, 0.08);
   color: var(--text-primary);
   border-color: var(--border-focus);
 }
 .category-tab--active {
-  background: var(--accent-primary);
-  border-color: var(--accent-primary);
+  background: var(--gradient-brand);
+  border-color: transparent;
   color: #ffffff;
   font-weight: 600;
-  box-shadow: 0 4px 14px rgba(99,102,241,0.25);
+  box-shadow: 0 4px 14px rgba(129,140,248,0.25);
 }
 .category-tab__icon { font-size: 16px; }
 
 /* ─── E-Commerce Refinement Toolbar ────────────────────────────────── */
 .filter-toolbar {
-  background: var(--bg-surface);
+  position: sticky;
+  top: 72px;
+  z-index: 900;
+  background: rgba(17, 17, 17, 0.75);
+  backdrop-filter: blur(16px) saturate(180%);
+  -webkit-backdrop-filter: blur(16px) saturate(180%);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  padding: 18px 22px;
+  border-radius: var(--radius-xl);
+  padding: 16px 20px;
   margin-bottom: 28px;
   display: flex;
   flex-direction: column;
   gap: 16px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
 }
 
 .filter-toolbar__primary {
@@ -714,18 +671,19 @@ input, select { font-family: inherit; }
 }
 .filter-toolbar__search input {
   width: 100%;
-  background: var(--bg-input);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 10px 38px;
+  border-radius: 9999px;
+  padding: 12px 38px;
   color: var(--text-primary);
   font-size: 14px;
   outline: none;
-  transition: border-color 0.2s ease;
+  transition: all 0.25s ease;
 }
 .filter-toolbar__search input:focus {
   border-color: var(--accent-primary);
-  box-shadow: 0 0 0 3px rgba(99,102,241,0.16);
+  box-shadow: 0 0 0 3px rgba(129,140,248,0.16);
+  background: rgba(255, 255, 255, 0.08);
 }
 .filter-toolbar__clear-search {
   position: absolute;
@@ -830,14 +788,15 @@ input, select { font-family: inherit; }
 .deal-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-xl);
   padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
   position: relative;
-  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
 }
 
 .deal-card::before {
@@ -847,13 +806,13 @@ input, select { font-family: inherit; }
   height: 3px;
   background: var(--gradient-brand);
   opacity: 0;
-  transition: opacity 0.25s ease;
+  transition: opacity 0.3s ease;
 }
 
 .deal-card:hover {
-  transform: translateY(-5px);
-  box-shadow: var(--shadow-card), var(--shadow-glow);
-  border-color: rgba(99,102,241,0.35);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-card-hover);
+  border-color: rgba(129, 140, 248, 0.4);
   background: var(--bg-card-hover);
 }
 .deal-card:hover::before { opacity: 1; }
@@ -885,10 +844,28 @@ input, select { font-family: inherit; }
   align-items: center;
   gap: 12px;
 }
-.deal-card__avatar {
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
+.deal-card__avatar-container {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+  flex-shrink: 0;
+  background: var(--bg-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.deal-card__avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #ffffff;
+  padding: 4px;
+}
+.deal-card__avatar-fallback {
+  width: 100%;
+  height: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -896,8 +873,6 @@ input, select { font-family: inherit; }
   font-size: 16px;
   font-weight: 800;
   color: #ffffff;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), inset 0 2px 4px rgba(255, 255, 255, 0.25);
-  flex-shrink: 0;
   letter-spacing: -0.02em;
 }
 .deal-card__merchant-text {

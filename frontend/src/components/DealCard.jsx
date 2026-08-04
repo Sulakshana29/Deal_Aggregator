@@ -130,12 +130,23 @@ export default function DealCard({ deal, onDelete, adminMode, onShare, onSelect 
       {/* Top Header: Store Avatar + Brand Name + Actions */}
       <div className="deal-card__header">
         <div className="deal-card__merchant-info">
-          <div
-            className="deal-card__avatar"
-            style={{ background: avatar.gradient }}
-            aria-hidden="true"
-          >
-            {avatar.initials}
+          <div className="deal-card__avatar-container">
+            <img 
+              src={`https://logo.clearbit.com/${deal.brand.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`}
+              alt=""
+              className="deal-card__avatar-img"
+              onError={(e) => {
+                e.target.style.display = 'none';
+                if(e.target.nextElementSibling) e.target.nextElementSibling.style.display = 'flex';
+              }}
+            />
+            <div 
+              className="deal-card__avatar-fallback"
+              style={{ background: avatar.gradient, display: 'none' }}
+              aria-hidden="true"
+            >
+              {avatar.initials}
+            </div>
           </div>
           <div className="deal-card__merchant-text">
             <h3 className="deal-card__brand">{deal.brand}</h3>

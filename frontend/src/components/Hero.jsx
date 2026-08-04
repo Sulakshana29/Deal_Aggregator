@@ -19,7 +19,7 @@ const POPULAR_SEARCHES = [
   { label: '💻 Electronics',         query: 'Electronics' },
 ];
 
-export default function Hero({ search, onSearch, activeCount, banksCount, categoriesCount }) {
+export default function Hero({ search, onSearch, activeCount, supportedBanksCount, bnplCount, uniqueBrandsCount }) {
   return (
     <section className="hero">
       <div className="hero__glow hero__glow--1" aria-hidden="true" />
@@ -29,7 +29,7 @@ export default function Hero({ search, onSearch, activeCount, banksCount, catego
         {/* Live Announcement Badge */}
         <div className="hero__badge">
           <span className="hero__badge-pill">NEW</span>
-          <span className="hero__badge-text">Sri Lanka's Unified Bank Card & BNPL Deal Platform</span>
+          <span className="hero__badge-text">Premium Deal Aggregation Engine</span>
         </div>
 
         {/* Main Headline */}
@@ -87,24 +87,24 @@ export default function Hero({ search, onSearch, activeCount, banksCount, catego
         {/* Key Platform Stats */}
         <div className="hero__stats">
           <div className="hero__stat-card">
-            <span className="hero__stat-icon" aria-hidden="true">🔥</span>
-            <span className="hero__stat-value">{activeCount || 36}+</span>
-            <span className="hero__stat-label">Active Promotions</span>
+            <span className="hero__stat-icon" aria-hidden="true">⚡</span>
+            <span className="hero__stat-value">{activeCount || 0}</span>
+            <span className="hero__stat-label">Live Offers</span>
           </div>
           <div className="hero__stat-card">
             <span className="hero__stat-icon" aria-hidden="true">🏦</span>
-            <span className="hero__stat-value">{banksCount || 6}</span>
-            <span className="hero__stat-label">Banks &amp; BNPL Providers</span>
+            <span className="hero__stat-value">{supportedBanksCount || 0}</span>
+            <span className="hero__stat-label">Supported Banks</span>
           </div>
           <div className="hero__stat-card">
             <span className="hero__stat-icon" aria-hidden="true">🛍️</span>
-            <span className="hero__stat-value">{categoriesCount || 7}</span>
-            <span className="hero__stat-label">Shopping Categories</span>
+            <span className="hero__stat-value">{bnplCount || 0}</span>
+            <span className="hero__stat-label">BNPL Partners</span>
           </div>
           <div className="hero__stat-card">
-            <span className="hero__stat-icon" aria-hidden="true">💰</span>
-            <span className="hero__stat-value">Up to 30%</span>
-            <span className="hero__stat-label">Max Instant Savings</span>
+            <span className="hero__stat-icon" aria-hidden="true">🌟</span>
+            <span className="hero__stat-value">{uniqueBrandsCount || 0}</span>
+            <span className="hero__stat-label">Brands</span>
           </div>
         </div>
       </div>

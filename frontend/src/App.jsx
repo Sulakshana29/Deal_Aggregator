@@ -69,13 +69,11 @@ export default function App() {
   const [adminMode, setAdminMode] = useState(false);
   const { toasts, showToast }     = useToast();
 
-  const [theme, setTheme]               = useState(() => localStorage.getItem('theme') || 'dark');
   const [selectedDeal, setSelectedDeal] = useState(null);
 
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', theme);
-    localStorage.setItem('theme', theme);
-  }, [theme]);
+    document.documentElement.setAttribute('data-theme', 'dark');
+  }, []);
 
   useEffect(() => {
     pushParams({ search, bank, category, cardType, offerType, channel, sortBy, showExpired });
@@ -123,6 +121,10 @@ export default function App() {
 
   const activeCount  = useMemo(() => allDeals.filter((d) => !d._isExpired).length, [allDeals]);
   const scrapedCount = useMemo(() => allDeals.filter((d) => d.source === 'scraped').length, [allDeals]);
+
+  const uniqueBrandsCount = useMemo(() => new Set(allDeals.map(d => d.brand)).size, [allDeals]);
+  const bnplCount = useMemo(() => banks.filter(b => b.toLowerCase().includes('koko') || b.toLowerCase().includes('mintpay')).length || 2, [banks]);
+  const supportedBanksCount = useMemo(() => Math.max(0, banks.length - bnplCount) || 12, [banks, bnplCount]);
 
   // Navbar section click handler
   const handleNavClick = (section) => {
@@ -232,7 +234,6 @@ export default function App() {
 
   return (
     <div className="ecommerce-app">
-      {/* Sticky E-Commerce Navigation Header */}
       <Navbar
         activeCount={activeCount}
         scrapedCount={scrapedCount}
@@ -242,8 +243,6 @@ export default function App() {
         adminMode={adminMode}
         onToggleAdmin={handleToggleAdmin}
         formatLastUpdated={formatLastUpdated}
-        theme={theme}
-        onToggleTheme={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
       />
 
       {/* Hero Showcase Section */}
@@ -251,8 +250,9 @@ export default function App() {
         search={search}
         onSearch={setSearch}
         activeCount={activeCount}
-        banksCount={banks.length || 6}
-        categoriesCount={categories.length || 7}
+        supportedBanksCount={supportedBanksCount}
+        bnplCount={bnplCount}
+        uniqueBrandsCount={uniqueBrandsCount}
       />
 
       <main className="main-content" id="catalog-section">
