@@ -12,7 +12,7 @@ global.fetch = () =>
 describe('App Component', () => {
   it('renders the navbar brand', () => {
     render(<App />);
-    const brandElement = screen.getByText(/DealVault/i);
-    expect(brandElement).toBeInTheDocument();
+    const brandElements = screen.getAllByText(/DealVault/i);
+    expect(brandElements.length).toBeGreaterThan(0);
   });
 });
