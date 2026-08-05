@@ -181,7 +181,7 @@ jobs:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USERNAME }}
           key: ${{ secrets.EC2_SSH_KEY }}
-          source: "docker-compose.prod.yml"
+          source: "docker-compose.prod.yml,prometheus/"
           target: "/home/${{ secrets.EC2_USERNAME }}/deal-aggregator"
 
       - name: Pull Images and Restart Containers

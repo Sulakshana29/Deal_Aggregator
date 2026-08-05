@@ -1,0 +1,21 @@
+global:
+  scrape_interval: 15s      # Scrape every 15 seconds
+  evaluation_interval: 15s  # Evaluate rules every 15 seconds
+
+scrape_configs:
+  # 1. Scrape Prometheus itself
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # 2. Scrape our Node.js Backend API
+  - job_name: 'backend-api'
+    static_configs:
+      # 'backend' is the service name in docker-compose
+      - targets: ['backend:5000']
+
+  # 3. Scrape cAdvisor for Docker container metrics
+  - job_name: 'cadvisor'
+    static_configs:
+      # 'cadvisor' is the service name in docker-compose
+      - targets: ['cadvisor:8080']

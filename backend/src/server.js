@@ -6,6 +6,10 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
+const client = require('prom-client');
+
+// Initialize default Node.js metrics collection (memory, CPU, event loop, etc.)
+client.collectDefaultMetrics();
 
 const dealsRouter = require('./routes/deals');
 
@@ -35,6 +39,12 @@ app.use('/deals', dealsRouter);
 // Health-check endpoint — used by Kubernetes liveness probes in Phase 4
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Prometheus metrics endpoint — scraped by Prometheus in Phase 5
+app.get('/metrics', async (_req, res) => {
+  res.set('Content-Type', client.register.contentType);
+  res.end(await client.register.metrics());
 });
 
 // Catch-all 404 for unknown routes

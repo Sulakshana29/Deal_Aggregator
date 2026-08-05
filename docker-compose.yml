@@ -77,9 +77,57 @@ services:
       - deal-network
     restart: "no"                    # one-shot — exit after scrape completes
 
+  # ─── 5. Monitoring: Prometheus ───────────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: deal-aggregator-prometheus
+    restart: always
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - deal-network
+
+  # ─── 6. Monitoring: Grafana ──────────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:latest
+    container_name: deal-aggregator-grafana
+    restart: always
+    ports:
+      - "3001:3000" # Expose Grafana on 3001 to avoid conflicting with frontend dev server
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    networks:
+      - deal-network
+
+  # ─── 7. Monitoring: cAdvisor (Docker Container Metrics) ──────────────────────
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: deal-aggregator-cadvisor
+    restart: always
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8080:8080"
+    networks:
+      - deal-network
+
 # ─── Persistent Volumes & Virtual Networks ────────────────────────────────────
 volumes:
   mongo-data:
+  prometheus-data:
+  grafana-data:
 
 networks:
   deal-network:
