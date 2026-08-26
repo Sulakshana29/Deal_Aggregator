@@ -118,7 +118,7 @@ services:
 
   # ─── 8. Logging: Loki (Log Storage) ─────────────────────────────────────────
   loki:
-    image: grafana/loki:2.9.0
+    image: grafana/loki:3.0.0
     container_name: deal-aggregator-loki
     restart: always
     ports:
@@ -132,7 +132,7 @@ services:
 
   # ─── 9. Logging: Promtail (Log Collector/Agent) ───────────────────────────────
   promtail:
-    image: grafana/promtail:2.9.0
+    image: grafana/promtail:3.0.0
     container_name: deal-aggregator-promtail
     restart: always
     volumes:
