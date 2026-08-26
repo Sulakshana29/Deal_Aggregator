@@ -1,0 +1,37 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  # Promtail tracks which log lines it has already sent here
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker-containers
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+        filters:
+          # Only collect logs from containers that have a compose service label
+          - name: label
+            values: ["com.docker.compose.service"]
+    relabel_configs:
+      # Use the Docker Compose service name as the 'container' label
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_service']
+        target_label: container
+      # Also capture the container name for more detail
+      - source_labels: ['__meta_docker_container_name']
+        regex: '/(.*)'
+        target_label: container_name
+      # Capture the Docker Compose project name
+      - source_labels: ['__meta_docker_container_label_com_docker_compose_project']
+        target_label: compose_project
+      # Use the log stream (stdout/stderr) as a label
+      - source_labels: ['__meta_docker_container_log_stream']
+        target_label: logstream
+      # Set the job label to "docker"
+      - target_label: job
+        replacement: docker
