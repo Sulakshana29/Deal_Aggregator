@@ -1,0 +1,22 @@
+name: Scheduled Scraper
+
+on:
+  schedule:
+    - cron: '0 */12 * * *'   # Every 12 hours (midnight & noon UTC)
+  workflow_dispatch:          # Manual trigger from GitHub UI
+
+jobs:
+  run-scraper:
+    name: Run Scraper on EC2
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Scraper via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USERNAME }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          command_timeout: "10m"
+          script: |
+            cd ~/deal-aggregator
+            docker compose -f docker-compose.prod.yml --profile scraper run --rm scraper

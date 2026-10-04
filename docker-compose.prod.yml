@@ -4,8 +4,10 @@ services:
     image: mongo:latest
     container_name: deal-aggregator-db
     restart: always
-    ports:
-      - "27017:27017"
+    # No 'ports' — DB is only accessible within the Docker network (security best practice)
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME:-admin}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:-changeme}
     volumes:
       - mongo-data:/data/db
     networks:
@@ -26,7 +28,7 @@ services:
       - "5000:5000"
     environment:
       - PORT=5000
-      - MONGO_URI=mongodb://mongodb:27017/deal-aggregator
+      - MONGO_URI=mongodb://${MONGO_USERNAME:-admin}:${MONGO_PASSWORD:-changeme}@mongodb:27017/deal-aggregator?authSource=admin
       # Hardcode EC2 public IP or domain later, but for now we allow anything for demo
       - CLIENT_ORIGIN=*
     depends_on:
@@ -61,7 +63,7 @@ services:
     profiles:
       - scraper
     environment:
-      - MONGO_URI=mongodb://mongodb:27017/deal-aggregator
+      - MONGO_URI=mongodb://${MONGO_USERNAME:-admin}:${MONGO_PASSWORD:-changeme}@mongodb:27017/deal-aggregator?authSource=admin
       - RETRY_DELAY_MS=3000
     depends_on:
       mongodb:
@@ -91,7 +93,7 @@ services:
     ports:
       - "3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
     volumes:
       - grafana-data:/var/lib/grafana
     depends_on:
