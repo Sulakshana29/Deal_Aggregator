@@ -22,11 +22,31 @@
 | 1 | Finish the core application (React + Express + MongoDB) | ✅ Done |
 | 2 | Get Docker Compose working (multi-stage builds) | ✅ Done |
 | 3 | CI Pipeline (GitHub Actions, Linting, Testing, Trivy, Docker Hub) | ✅ Done |
-| 4 | CD Pipeline to EC2 (Automated deployment on push) | ⏳ Pending |
-| 5 | Monitoring (Prometheus + Grafana) | ⏳ Pending |
-| 6 | Logging (Loki or ELK Stack) | ⏳ Pending |
-| 7 | Refactor CI into multiple jobs for efficiency | ⏳ Pending |
-| 8 | Move to Kubernetes (Deployments, Services, ConfigMaps, CronJob) | ⏳ Pending |
+| 4 | CD Pipeline to EC2 + Scheduled Scraper Cron | ✅ Done |
+| 5 | Monitoring (Prometheus + Grafana + cAdvisor) | ✅ Done |
+| 6 | Logging (Loki + Promtail) | ✅ Done |
+| 7 | Refactor CI into parallel jobs | ⏳ Pending |
+| 8 | Move to Kubernetes (EKS / Minikube) | ⏳ Pending |
+
+## DevSecOps Features
+
+### 🔄 CI/CD Pipeline (GitHub Actions)
+The project utilizes a monolithic but event-driven CI/CD pipeline:
+1. **Continuous Integration (CI):** On every Pull Request or Push, the code is Linted, Tested, and Docker Images are built.
+2. **Security Scanning:** Images are scanned using **Trivy** to block Critical/High vulnerabilities.
+3. **Continuous Deployment (CD):** On pushes to the `main` branch, images are pushed to Docker Hub, and GitHub Actions securely deploys them to the AWS EC2 instance.
+4. **Automated Scraper:** A separate GitHub Actions Cron workflow triggers the scraper container on the EC2 instance every 12 hours.
+
+### 📊 Monitoring & Logging
+The production stack spins up a full observability suite:
+- **Prometheus**: Scrapes metrics from the Node.js API (via `prom-client`) and **cAdvisor** (Docker container hardware metrics).
+- **Grafana**: Visualizes metrics on port `3001`.
+- **Loki & Promtail**: Promtail reads raw Docker socket logs and ships them to Loki for centralized log querying in Grafana.
+
+### 🛡️ Security Hardening
+- **Network Isolation:** MongoDB is NOT exposed to the internet; it is only accessible within the internal Docker network.
+- **Database Auth:** MongoDB requires username/password authentication.
+- **Rate Limiting:** Express API utilizes `express-rate-limit` to prevent DDoS/spam on write endpoints.
 
 ## Running Locally
 
