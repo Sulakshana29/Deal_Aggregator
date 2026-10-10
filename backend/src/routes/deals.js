@@ -2,67 +2,36 @@ const express = require('express');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const Deal = require('../models/Deal');
+const escapeRegex = require('../utils/escapeRegex');
 
-// ─── Rate limiter for write endpoints ────────────────────────────────────────
-// Limits POST to 30 requests per 15 minutes per IP.
-// Documented in Phase 5 security section.
-const writeLimiter = rateLimit({
+// ─── Read-only API ────────────────────────────────────────────────────────────
+// This API intentionally exposes NO write endpoints. Deals are written only by
+// the scraper (CronJob) and seed.js, which talk to MongoDB directly over the
+// internal network. Fewer public routes = smaller attack surface.
+
+// ─── Rate limiter ────────────────────────────────────────────────────────────
+// 300 requests per 15 minutes per client IP — protects against floods and
+// aggressive scraping. Relies on `trust proxy` in server.js so the real client
+// IP (from X-Forwarded-For) is used instead of the nginx container's IP.
+const readLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 30,
+  max: 300,
   message: { error: 'Too many requests — please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
 });
 
-// ─── Allowed values (mirrors the Mongoose enums) ──────────────────────────────
-const VALID_CARD_TYPES    = ['credit', 'debit', 'both'];
-const VALID_OFFER_TYPES   = ['percentage_discount', 'cashback', 'instalment', 'bogo', 'flat_discount'];
-const VALID_CHANNELS      = ['online', 'instore', 'both'];
+router.use(readLimiter);
 
-// ─── Validation helper ────────────────────────────────────────────────────────
+const MAX_SEARCH_LENGTH = 100;
+
 /**
- * Validates POST body fields.
- * Returns an array of error strings — empty means valid.
+ * Returns the query param as a plain string, or undefined.
+ * Express parses ?bank[$ne]=x into an object and ?bank=a&bank=b into an array —
+ * both are rejected so they can never reach a Mongo query (NoSQL injection).
  */
-function validateDeal(body) {
-  const errors = [];
-
-  // Required string fields
-  ['brand', 'discountText', 'bank', 'category'].forEach((field) => {
-    if (!body[field] || typeof body[field] !== 'string' || body[field].trim() === '') {
-      errors.push(`"${field}" is required and must be a non-empty string`);
-    }
-  });
-
-  // Enum validations
-  if (body.cardType && !VALID_CARD_TYPES.includes(body.cardType)) {
-    errors.push(`"cardType" must be one of: ${VALID_CARD_TYPES.join(', ')}`);
-  }
-  if (body.offerType && !VALID_OFFER_TYPES.includes(body.offerType)) {
-    errors.push(`"offerType" must be one of: ${VALID_OFFER_TYPES.join(', ')}`);
-  }
-  if (body.usageChannel && !VALID_CHANNELS.includes(body.usageChannel)) {
-    errors.push(`"usageChannel" must be one of: ${VALID_CHANNELS.join(', ')}`);
-  }
-  if (body.source && !['manual', 'scraped'].includes(body.source)) {
-    errors.push('"source" must be "manual" or "scraped"');
-  }
-
-  // Numeric fields
-  ['discountValue', 'minSpend', 'maxDiscount'].forEach((field) => {
-    if (body[field] !== undefined && (typeof body[field] !== 'number' || body[field] < 0)) {
-      errors.push(`"${field}" must be a non-negative number`);
-    }
-  });
-
-  // Date fields
-  ['validFrom', 'validUntil'].forEach((field) => {
-    if (body[field] && isNaN(Date.parse(body[field]))) {
-      errors.push(`"${field}" must be a valid date string`);
-    }
-  });
-
-  return errors;
+function queryString(value) {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
 }
 
 // ─── GET /deals ───────────────────────────────────────────────────────────────
@@ -93,24 +62,28 @@ router.get('/', async (req, res) => {
       }
     }
 
-    // Case-insensitive exact-match filters
+    // Case-insensitive exact-match filters (input escaped — matched literally)
     const exactFilters = {
-      bank:         req.query.bank,
-      category:     req.query.category,
-      cardType:     req.query.cardType,
-      offerType:    req.query.offerType,
-      usageChannel: req.query.usageChannel,
+      bank:         queryString(req.query.bank),
+      category:     queryString(req.query.category),
+      cardType:     queryString(req.query.cardType),
+      offerType:    queryString(req.query.offerType),
+      usageChannel: queryString(req.query.usageChannel),
     };
 
     Object.entries(exactFilters).forEach(([key, val]) => {
       if (val) {
-        filter[key] = { $regex: new RegExp(`^${val}$`, 'i') };
+        filter[key] = { $regex: new RegExp(`^${escapeRegex(val)}$`, 'i') };
       }
     });
 
     // Text search across brand and discountText
-    if (req.query.search) {
-      const q = req.query.search.trim();
+    const search = queryString(req.query.search);
+    if (search) {
+      if (search.length > MAX_SEARCH_LENGTH) {
+        return res.status(400).json({ error: `"search" must be at most ${MAX_SEARCH_LENGTH} characters` });
+      }
+      const q = escapeRegex(search);
       filter.$or = [
         { brand:        { $regex: q, $options: 'i' } },
         { discountText: { $regex: q, $options: 'i' } },
@@ -144,68 +117,6 @@ router.get('/meta', async (req, res) => {
   } catch (err) {
     console.error('GET /deals/meta error:', err.message);
     res.status(500).json({ error: 'Failed to fetch metadata' });
-  }
-});
-
-// ─── POST /deals ──────────────────────────────────────────────────────────────
-/**
- * Creates a new deal.
- * Rate-limited + validated before touching the database.
- */
-router.post('/', writeLimiter, async (req, res) => {
-  const errors = validateDeal(req.body);
-  if (errors.length > 0) {
-    return res.status(400).json({ error: 'Validation failed', details: errors });
-  }
-
-  try {
-    const deal = new Deal({
-      brand:         req.body.brand.trim(),
-      discountText:  req.body.discountText.trim(),
-      bank:          req.body.bank.trim(),
-      category:      req.body.category.trim(),
-      cardType:      req.body.cardType      || 'both',
-      cardTier:      req.body.cardTier      || 'all',
-      offerType:     req.body.offerType     || 'percentage_discount',
-      discountValue: req.body.discountValue || 0,
-      minSpend:      req.body.minSpend      || 0,
-      maxDiscount:   req.body.maxDiscount   || 0,
-      usageChannel:  req.body.usageChannel  || 'both',
-      validFrom:     req.body.validFrom  ? new Date(req.body.validFrom)  : null,
-      validUntil:    req.body.validUntil ? new Date(req.body.validUntil) : null,
-      validDays:     req.body.validDays  || [],
-      isStackable:   req.body.isStackable || false,
-      isActive:      req.body.isActive !== undefined ? req.body.isActive : true,
-      source:        req.body.source    || 'manual',
-      scrapedFrom:   req.body.scrapedFrom || null,
-    });
-
-    const saved = await deal.save();
-    res.status(201).json(saved);
-  } catch (err) {
-    console.error('POST /deals error:', err.message);
-    res.status(500).json({ error: 'Failed to create deal' });
-  }
-});
-
-// ─── DELETE /deals/:id ────────────────────────────────────────────────────────
-/**
- * Hard-deletes a deal by MongoDB ObjectId.
- * Returns 404 if the id doesn't match any document.
- */
-router.delete('/:id', async (req, res) => {
-  try {
-    const deleted = await Deal.findByIdAndDelete(req.params.id);
-    if (!deleted) {
-      return res.status(404).json({ error: 'Deal not found' });
-    }
-    res.json({ message: 'Deal deleted', id: req.params.id });
-  } catch (err) {
-    if (err.name === 'CastError') {
-      return res.status(400).json({ error: 'Invalid deal ID format' });
-    }
-    console.error('DELETE /deals/:id error:', err.message);
-    res.status(500).json({ error: 'Failed to delete deal' });
   }
 });
 

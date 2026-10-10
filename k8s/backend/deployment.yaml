@@ -42,10 +42,11 @@ spec:
             failureThreshold: 3
 
           # ── Readiness Probe ────────────────────────────────────────────────
-          # K8s only sends traffic to a pod that returns 200 from /health
+          # K8s only sends traffic to a pod whose /ready returns 200 —
+          # /ready returns 503 while the MongoDB connection is down
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: 5000
             initialDelaySeconds: 10
             periodSeconds: 10

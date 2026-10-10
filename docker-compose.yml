@@ -1,11 +1,15 @@
 services:
   # ─── 1. Database Tier: MongoDB ──────────────────────────────────────────────
   mongodb:
-    image: mongo:latest
+    image: mongo:9.0.2                 # pinned version — :latest can silently jump versions
     container_name: deal-aggregator-db
     restart: always
+    environment:
+      # Creates the root user on FIRST start (empty volume only) and enables auth
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME:?set MONGO_USERNAME in .env}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:?set MONGO_PASSWORD in .env}
     ports:
-      - "27017:27017"
+      - "127.0.0.1:27017:27017"      # localhost only — reachable by Compass, not the LAN
     volumes:
       - mongo-data:/data/db
     networks:
@@ -29,7 +33,7 @@ services:
       - "5000:5000"
     environment:
       - PORT=5000
-      - MONGO_URI=mongodb://mongodb:27017/deal-aggregator
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/deal-aggregator?authSource=admin
       - CLIENT_ORIGIN=http://localhost:3000
     depends_on:
       mongodb:
@@ -51,7 +55,7 @@ services:
     container_name: deal-aggregator-frontend
     restart: always
     ports:
-      - "3000:80"
+      - "3000:8080"                  # nginx-unprivileged listens on 8080
     depends_on:
       backend:
         condition: service_healthy   # waits for API to be ready before frontend starts
@@ -68,7 +72,7 @@ services:
     profiles:
       - scraper                      # not started by default with `docker compose up`
     environment:
-      - MONGO_URI=mongodb://mongodb:27017/deal-aggregator
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/deal-aggregator?authSource=admin
       - RETRY_DELAY_MS=3000
     depends_on:
       mongodb:
@@ -79,7 +83,7 @@ services:
 
   # ─── 5. Monitoring: Prometheus ───────────────────────────────────────────────
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.15.0
     container_name: deal-aggregator-prometheus
     restart: always
     volumes:
@@ -92,13 +96,13 @@ services:
 
   # ─── 6. Monitoring: Grafana ──────────────────────────────────────────────────
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.2.3
     container_name: deal-aggregator-grafana
     restart: always
     ports:
       - "3001:3000" # Expose Grafana on 3001 to avoid conflicting with frontend dev server
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}   # "admin" fallback is for local dev only
     volumes:
       - grafana-data:/var/lib/grafana
     depends_on:

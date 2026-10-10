@@ -6,7 +6,6 @@
  *   - Glowing brand identity
  *   - Quick navigation shortcuts (All Deals, Featured, BNPL, Expiring Soon)
  *   - Live Scraper / System Status badge
- *   - Quick Admin mode unlock button
  */
 import React from 'react';
 
@@ -16,8 +15,6 @@ export default function Navbar({
   lastUpdated,
   onNavClick,
   activeSection,
-  adminMode,
-  onToggleAdmin,
   formatLastUpdated,
 }) {
   return (
@@ -62,7 +59,7 @@ export default function Navbar({
           </button>
         </nav>
 
-        {/* Right: Live System Status, Theme Toggle & Admin Toggle */}
+        {/* Right: Live System Status */}
         <div className="navbar__actions">
           {/* Live Status indicator */}
           <div className="navbar__status" title={`Last updated: ${formatLastUpdated(lastUpdated)}`}>
@@ -71,15 +68,6 @@ export default function Navbar({
               <strong>{activeCount}</strong> Active • 🤖 <strong>{scrapedCount}</strong> Live
             </span>
           </div>
-
-          {/* Admin mode toggle */}
-          <button
-            className={`navbar__admin-btn ${adminMode ? 'navbar__admin-btn--active' : ''}`}
-            onClick={onToggleAdmin}
-            title={adminMode ? 'Disable Admin Mode' : 'Enable Admin Mode'}
-          >
-            {adminMode ? '🔓 Admin On' : '🔒 Admin'}
-          </button>
         </div>
       </div>
     </header>

@@ -96,7 +96,7 @@ function getBrandAvatar(brand) {
   return { initials, gradient };
 }
 
-export default function DealCard({ deal, onDelete, adminMode, onShare, onSelect }) {
+export default function DealCard({ deal, onShare, onSelect }) {
   const expiry = getDaysLeft(deal.validUntil);
   const isExpired = expiry.status === 'expired';
   const isUrgent  = expiry.status === 'urgent';
@@ -163,16 +163,6 @@ export default function DealCard({ deal, onDelete, adminMode, onShare, onSelect 
           >
             🔗
           </button>
-          {adminMode && (
-            <button
-              className="deal-card__icon-btn deal-card__icon-btn--delete"
-              onClick={(e) => { e.stopPropagation(); onDelete(deal._id); }}
-              aria-label="Delete deal"
-              title="Delete deal (admin)"
-            >
-              ✕
-            </button>
-          )}
         </div>
       </div>
 

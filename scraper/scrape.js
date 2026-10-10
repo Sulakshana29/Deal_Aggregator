@@ -444,7 +444,8 @@ async function main() {
   // ── Connect to MongoDB ─────────────────────────────────────────────────────
   try {
     await mongoose.connect(MONGO_URI);
-    console.log(`\n✅ MongoDB connected: ${MONGO_URI}`);
+    // Log only host/db — MONGO_URI contains credentials
+    console.log(`\n✅ MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
   } catch (err) {
     console.error(`\n❌ MongoDB connection failed: ${err.message}`);
     process.exit(1); // exit code 1 so K8s marks the Job as failed

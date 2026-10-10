@@ -1,10 +1,14 @@
 services:
   # ─── 1. Database Tier: MongoDB ──────────────────────────────────────────────
   mongodb:
-    image: mongo:latest
+    image: mongo:9.0.2                 # pinned version — :latest can silently jump versions
     container_name: deal-aggregator-db
     restart: always
-    # No ports exposed (this part was good!)
+    # No ports exposed — only reachable on the internal Docker network
+    environment:
+      # Creates the root user on FIRST start (empty volume only) and enables auth
+      - MONGO_INITDB_ROOT_USERNAME=${MONGO_USERNAME:?set MONGO_USERNAME in .env}
+      - MONGO_INITDB_ROOT_PASSWORD=${MONGO_PASSWORD:?set MONGO_PASSWORD in .env}
     volumes:
       - mongo-data:/data/db
     networks:
@@ -21,11 +25,10 @@ services:
     image: dockersula/deal-aggregator-backend:latest
     container_name: deal-aggregator-backend
     restart: always
-    ports:
-      - "5000:5000"
+    # No public port — the API is reached only through the frontend nginx proxy (/api/)
     environment:
       - PORT=5000
-      - MONGO_URI=mongodb://mongodb:27017/deal-aggregator
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/deal-aggregator?authSource=admin
       # Hardcode EC2 public IP or domain later, but for now we allow anything for demo
       - CLIENT_ORIGIN=*
     depends_on:
@@ -46,7 +49,7 @@ services:
     container_name: deal-aggregator-frontend
     restart: always
     ports:
-      - "80:80"
+      - "80:8080"                    # nginx-unprivileged listens on 8080
     depends_on:
       backend:
         condition: service_healthy
@@ -60,7 +63,7 @@ services:
     profiles:
       - scraper
     environment:
-      - MONGO_URI=mongodb://mongodb:27017/deal-aggregator
+      - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/deal-aggregator?authSource=admin
       - RETRY_DELAY_MS=3000
     depends_on:
       mongodb:
@@ -71,26 +74,28 @@ services:
 
   # ─── 5. Monitoring: Prometheus ───────────────────────────────────────────────
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.15.0
     container_name: deal-aggregator-prometheus
     restart: always
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
-    ports:
-      - "9090:9090"
+    # No public port — Grafana queries it over the internal network
     networks:
       - deal-network
 
   # ─── 6. Monitoring: Grafana ──────────────────────────────────────────────────
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:13.2.3
     container_name: deal-aggregator-grafana
     restart: always
     ports:
-      - "3001:3000"
+      # Bound to localhost only — open it via an SSH tunnel:
+      #   ssh -L 3001:localhost:3001 <user>@<ec2-host>  → http://localhost:3001
+      - "127.0.0.1:3001:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      # Required — compose refuses to start with no password (no "admin" default)
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:?set GRAFANA_PASSWORD in .env}
     volumes:
       - grafana-data:/var/lib/grafana
     depends_on:
@@ -114,8 +119,7 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    ports:
-      - "8080:8080"
+    # No public port — scraped by Prometheus over the internal network
     networks:
       - deal-network
       
@@ -124,8 +128,7 @@ services:
     image: grafana/loki:3.0.0
     container_name: deal-aggregator-loki
     restart: always
-    ports:
-      - "3100:3100"
+    # No public port — Promtail pushes and Grafana queries over the internal network
     volumes:
       - ./loki/loki-config.yml:/etc/loki/loki-config.yml
       - loki-data:/loki

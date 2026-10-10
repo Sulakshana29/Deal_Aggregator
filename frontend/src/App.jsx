@@ -66,7 +66,6 @@ export default function App() {
   const [sortBy,      setSortBy]      = useState(initialParams.sortBy);
   const [showExpired, setShowExpired] = useState(initialParams.showExpired);
 
-  const [adminMode, setAdminMode] = useState(false);
   const { toasts, showToast }     = useToast();
 
   const [selectedDeal, setSelectedDeal] = useState(null);
@@ -184,14 +183,6 @@ export default function App() {
     return results;
   }, [allDeals, search, bank, category, cardType, offerType, channel, sortBy, showExpired]);
 
-  const handleToggleAdmin = () => {
-    setAdminMode((v) => {
-      const next = !v;
-      showToast(next ? '🔓 Admin Mode Enabled — Delete buttons unlocked' : '🔒 Admin Mode Disabled', 'success');
-      return next;
-    });
-  };
-
   const handleShare = useCallback((deal) => {
     const text = `${deal.brand} — ${deal.discountText} (${deal.bank})`;
     const url  = deal.scrapedFrom || window.location.href;
@@ -204,18 +195,6 @@ export default function App() {
       showToast('Clipboard not supported in browser', 'error');
     }
   }, [showToast]);
-
-  async function handleDelete(id) {
-    setAllDeals((prev) => prev.filter((d) => d._id !== id));
-    try {
-      const res = await fetch(`${API_BASE}/deals/${id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error(`Delete failed: ${res.status}`);
-      showToast('Deal permanently removed', 'success');
-    } catch (err) {
-      console.error('Delete error:', err.message);
-      showToast('Delete failed — refreshing catalog...', 'error');
-    }
-  }
 
   const resetFilters = () => {
     setSearch(''); setBank(''); setCategory('');
@@ -240,8 +219,6 @@ export default function App() {
         lastUpdated={lastUpdated}
         onNavClick={handleNavClick}
         activeSection={activeSection}
-        adminMode={adminMode}
-        onToggleAdmin={handleToggleAdmin}
         formatLastUpdated={formatLastUpdated}
       />
 
@@ -297,9 +274,7 @@ export default function App() {
           <DealList
             deals={filteredDeals}
             loading={loading}
-            onDelete={handleDelete}
             onShare={handleShare}
-            adminMode={adminMode}
             onReset={resetFilters}
             onSelect={setSelectedDeal}
           />

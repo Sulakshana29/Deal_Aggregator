@@ -212,26 +212,6 @@ input, select { font-family: inherit; }
   animation: pulse-dot 2s infinite;
 }
 
-.navbar__admin-btn {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  color: var(--text-secondary);
-  padding: 6px 14px;
-  border-radius: 99px;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.2s ease;
-}
-.navbar__admin-btn:hover {
-  background: var(--bg-card-hover);
-  color: var(--text-primary);
-}
-.navbar__admin-btn--active {
-  background: rgba(244,63,94,0.15);
-  border-color: rgba(244,63,94,0.4);
-  color: #fda4af;
-}
-
 /* ─── Hero Section ─────────────────────────────────────────────────── */
 .hero {
   position: relative;
@@ -911,11 +891,6 @@ input, select { font-family: inherit; }
   color: #ffffff;
   border-color: var(--accent-primary);
 }
-.deal-card__icon-btn--delete:hover {
-  background: var(--accent-rose);
-  border-color: var(--accent-rose);
-  color: #ffffff;
-}
 
 /* E-Commerce Discount Callout Box */
 .deal-card__callout {
@@ -1465,15 +1440,6 @@ input, select { font-family: inherit; }
   border-color: rgba(255, 255, 255, 0.3) !important;
   color: #ffffff !important;
 }
-[data-theme="light"] .navbar__admin-btn {
-  background: rgba(255, 255, 255, 0.08) !important;
-  border-color: rgba(255, 255, 255, 0.15) !important;
-  color: rgba(255, 255, 255, 0.85) !important;
-}
-[data-theme="light"] .navbar__admin-btn:hover {
-  background: rgba(255, 255, 255, 0.16) !important;
-  color: #ffffff !important;
-}
 
 /* ── Hero ────────────────────────────────────────────────────────────── */
 [data-theme="light"] .hero {
@@ -1718,13 +1684,6 @@ input, select { font-family: inherit; }
 [data-theme="light"] .deal-modal__header {
   background: var(--bg-surface);
   border-bottom-color: var(--border);
-}
-
-/* ── Admin mode toggle ──────────────────────────────────────────────── */
-[data-theme="light"] .navbar__admin-btn--active {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: var(--accent-rose);
 }
 
 /* ── Expiring pulse — softer in light mode ──────────────────────────── */

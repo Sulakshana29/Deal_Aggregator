@@ -12,7 +12,7 @@ spec:
   ports:
     - protocol: TCP
       port: 80
-      targetPort: 80
+      targetPort: 8080      # container port of nginx-unprivileged
       nodePort: 30080       # fixed nodePort so the URL stays stable between restarts
   # NodePort exposes the frontend on every Minikube node's IP:30080
   # Access via: minikube service deal-aggregator-frontend -n deal-aggregator

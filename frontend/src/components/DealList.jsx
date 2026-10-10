@@ -4,9 +4,7 @@
  * Props:
  *   deals      — array of deal objects to display
  *   loading    — boolean: show skeleton placeholders?
- *   onDelete(id) — passed through to each DealCard
  *   onShare(deal) — share button handler
- *   adminMode  — boolean: show delete buttons?
  *   onReset    — clear-all-filters callback for empty state
  */
 import DealCard from './DealCard';
@@ -22,7 +20,7 @@ function SkeletonCard() {
   );
 }
 
-export default function DealList({ deals, loading, onDelete, onShare, adminMode, onReset, onSelect }) {
+export default function DealList({ deals, loading, onShare, onReset, onSelect }) {
   if (loading) {
     return (
       <div className="deal-grid" aria-label="Loading deals">
@@ -56,9 +54,7 @@ export default function DealList({ deals, loading, onDelete, onShare, adminMode,
         <DealCard
           key={deal._id}
           deal={deal}
-          onDelete={onDelete}
           onShare={onShare}
-          adminMode={adminMode}
           onSelect={onSelect}
         />
       ))}
