@@ -35,6 +35,8 @@ services:
       - PORT=5000
       - MONGO_URI=mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongodb:27017/deal-aggregator?authSource=admin
       - CLIENT_ORIGIN=http://localhost:3000
+      # Show seed.js sample offers locally (never set in production)
+      - SHOW_SAMPLE_DATA=true
     depends_on:
       mongodb:
         condition: service_healthy   # waits for real DB readiness, not just container start

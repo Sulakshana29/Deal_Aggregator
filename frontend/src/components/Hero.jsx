@@ -1,112 +1,49 @@
 /**
- * Hero.jsx
- *
- * High-impact E-Commerce hero banner featuring:
- *   - Glowing live announcement badge
- *   - Clear value proposition headline & subtitle
- *   - Integrated Hero Search bar
- *   - Popular search keyword tags for 1-click filtering
- *   - Live platform metrics showcase
+ * Hero.jsx — what the site is, a search box, and real numbers from /deals/meta.
  */
-import React from 'react';
+import Icon from './Icon';
 
-const POPULAR_SEARCHES = [
-  { label: '🛒 Cargills Food City', query: 'Cargills' },
-  { label: '🍕 Dining Offers',       query: 'Dining' },
-  { label: '⚡ Koko 0% Instalment',  query: 'Koko' },
-  { label: '🔄 Mintpay',             query: 'Mintpay' },
-  { label: '👗 Fashion Bug',         query: 'Fashion Bug' },
-  { label: '💻 Electronics',         query: 'Electronics' },
-];
+export default function Hero({ search, onSearch, stats }) {
+  const items = [
+    { label: 'Live offers', value: stats?.live },
+    { label: 'Banks & providers', value: stats?.providers },
+    { label: 'Stores', value: stats?.brands },
+    { label: 'Ending this week', value: stats?.endingSoon },
+  ];
 
-export default function Hero({ search, onSearch, activeCount, supportedBanksCount, bnplCount, uniqueBrandsCount }) {
   return (
     <section className="hero">
-      <div className="hero__glow hero__glow--1" aria-hidden="true" />
-      <div className="hero__glow hero__glow--2" aria-hidden="true" />
-
-      <div className="hero__content">
-        {/* Live Announcement Badge */}
-        <div className="hero__badge">
-          <span className="hero__badge-pill">NEW</span>
-          <span className="hero__badge-text">Premium Deal Aggregation Engine</span>
-        </div>
-
-        {/* Main Headline */}
+      <div className="container hero__inner">
         <h1 className="hero__title">
-          Every Bank Card Discount &amp; <br />
-          <span className="hero__title-highlight">0% BNPL Offer</span> in One Place.
+          Every bank card offer in Sri Lanka, <span className="hero__accent">in one place.</span>
         </h1>
-
-        {/* Subtitle */}
-        <p className="hero__subtitle">
-          Stop hopping across 10 different bank websites. Discover stackable card promos,
-          instant cashback, and 0% interest instalments from Sri Lanka&apos;s top banks and BNPL providers.
+        <p className="hero__lead">
+          Discounts, cashback and pay-later plans from Sri Lankan banks, Koko and Mintpay —
+          collected from mypromo.lk and refreshed every 12 hours.
         </p>
 
-        {/* Hero Search Box */}
-        <div className="hero__search-container">
-          <div className="hero__search-box">
-            <span className="hero__search-icon" aria-hidden="true">🔍</span>
-            <input
-              type="text"
-              className="hero__search-input"
-              placeholder="Search merchants, bank cards, Koko, Mintpay or categories..."
-              value={search}
-              onChange={(e) => onSearch(e.target.value)}
-              aria-label="Search deals across Sri Lanka"
-            />
-            {search && (
-              <button
-                className="hero__search-clear"
-                onClick={() => onSearch('')}
-                aria-label="Clear search"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
+        <form className="search" role="search" onSubmit={(e) => e.preventDefault()}>
+          <Icon name="search" className="search__icon" />
+          <label htmlFor="hero-search" className="sr-only">Search offers</label>
+          <input
+            id="hero-search"
+            type="search"
+            className="search__input"
+            placeholder="Search a store, bank or offer — e.g. Keells, HNB, pizza"
+            value={search}
+            maxLength={100}
+            onChange={(e) => onSearch(e.target.value)}
+          />
+        </form>
 
-        {/* Popular Keyword Tags */}
-        <div className="hero__popular">
-          <span className="hero__popular-label">Trending Searches:</span>
-          <div className="hero__popular-tags">
-            {POPULAR_SEARCHES.map((item) => (
-              <button
-                key={item.label}
-                className="hero__popular-tag"
-                onClick={() => onSearch(item.query)}
-              >
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Key Platform Stats */}
-        <div className="hero__stats">
-          <div className="hero__stat-card">
-            <span className="hero__stat-icon" aria-hidden="true">⚡</span>
-            <span className="hero__stat-value">{activeCount || 0}</span>
-            <span className="hero__stat-label">Live Offers</span>
-          </div>
-          <div className="hero__stat-card">
-            <span className="hero__stat-icon" aria-hidden="true">🏦</span>
-            <span className="hero__stat-value">{supportedBanksCount || 0}</span>
-            <span className="hero__stat-label">Supported Banks</span>
-          </div>
-          <div className="hero__stat-card">
-            <span className="hero__stat-icon" aria-hidden="true">🛍️</span>
-            <span className="hero__stat-value">{bnplCount || 0}</span>
-            <span className="hero__stat-label">BNPL Partners</span>
-          </div>
-          <div className="hero__stat-card">
-            <span className="hero__stat-icon" aria-hidden="true">🌟</span>
-            <span className="hero__stat-value">{uniqueBrandsCount || 0}</span>
-            <span className="hero__stat-label">Brands</span>
-          </div>
-        </div>
+        <dl className="stats">
+          {items.map((s) => (
+            <div className="stats__item" key={s.label}>
+              <dt className="stats__label">{s.label}</dt>
+              <dd className="stats__value">{s.value ?? '–'}</dd>
+            </div>
+          ))}
+        </dl>
       </div>
     </section>
   );

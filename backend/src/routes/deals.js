@@ -1,8 +1,9 @@
 const express = require('express');
+const mongoose = require('mongoose');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const Deal = require('../models/Deal');
-const escapeRegex = require('../utils/escapeRegex');
+const { buildDealQuery, liveFilter, modeFilter, QueryError } = require('../dealQuery');
 
 // ─── Read-only API ────────────────────────────────────────────────────────────
 // This API intentionally exposes NO write endpoints. Deals are written only by
@@ -23,100 +24,134 @@ const readLimiter = rateLimit({
 
 router.use(readLimiter);
 
-const MAX_SEARCH_LENGTH = 100;
+// Sample offers from seed.js are visible only when explicitly enabled (local dev)
+const showSamples = () => process.env.SHOW_SAMPLE_DATA === 'true';
 
-/**
- * Returns the query param as a plain string, or undefined.
- * Express parses ?bank[$ne]=x into an object and ?bank=a&bank=b into an array —
- * both are rejected so they can never reach a Mongo query (NoSQL injection).
- */
-function queryString(value) {
-  return typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined;
-}
+// Fields never sent to clients
+const HIDDEN_FIELDS = { __v: 0, _sortExpiry: 0 };
+const FAR_FUTURE = new Date('9999-12-31T00:00:00Z');
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // ─── GET /deals ───────────────────────────────────────────────────────────────
 /**
- * Returns deals with optional filtering.
+ * Paginated list of live offers (active, not expired).
  *
- * Query params (all optional, combinable):
- *   ?bank=HNB
- *   ?category=Dining
- *   ?cardType=credit
- *   ?offerType=percentage_discount
- *   ?usageChannel=online
- *   ?isActive=true          (defaults to true — hide expired deals)
- *   ?search=pizza           (text search on brand + discountText)
+ * Query params (all optional):
+ *   ?mode=card|paylater      card discounts vs. BNPL / 0% instalment plans
+ *   ?category=Dining         exact category name (from /deals/meta)
+ *   ?provider=HNB            exact provider name (from /deals/meta)
+ *   ?cardType=credit|debit   includes offers valid for both
+ *   ?search=pizza            text search on brand, title, description, provider
+ *   ?sort=ending|discount|newest   (default: ending — soonest expiry first)
+ *   ?page=1&limit=24         limit is capped at 50
+ *
+ * Response: { items, total, page, pages, limit }
  */
 router.get('/', async (req, res) => {
+  let q;
   try {
-    const filter = {};
-
-    // ?all=true — return every deal regardless of isActive (used by frontend for client-side filtering)
-    // ?isActive=false — return only inactive deals
-    // (default) — return only active deals
-    if (req.query.all !== 'true') {
-      if (req.query.isActive !== undefined) {
-        filter.isActive = req.query.isActive === 'true';
-      } else {
-        filter.isActive = true;
-      }
-    }
-
-    // Case-insensitive exact-match filters (input escaped — matched literally)
-    const exactFilters = {
-      bank:         queryString(req.query.bank),
-      category:     queryString(req.query.category),
-      cardType:     queryString(req.query.cardType),
-      offerType:    queryString(req.query.offerType),
-      usageChannel: queryString(req.query.usageChannel),
-    };
-
-    Object.entries(exactFilters).forEach(([key, val]) => {
-      if (val) {
-        filter[key] = { $regex: new RegExp(`^${escapeRegex(val)}$`, 'i') };
-      }
-    });
-
-    // Text search across brand and discountText
-    const search = queryString(req.query.search);
-    if (search) {
-      if (search.length > MAX_SEARCH_LENGTH) {
-        return res.status(400).json({ error: `"search" must be at most ${MAX_SEARCH_LENGTH} characters` });
-      }
-      const q = escapeRegex(search);
-      filter.$or = [
-        { brand:        { $regex: q, $options: 'i' } },
-        { discountText: { $regex: q, $options: 'i' } },
-      ];
-    }
-
-    const deals = await Deal.find(filter).sort({ createdAt: -1 });
-    res.json({ count: deals.length, deals });
+    q = buildDealQuery(req.query, { showSamples: showSamples() });
   } catch (err) {
-    console.error('GET /deals error:', err.message);
+    // Express 4 doesn't catch errors thrown in async handlers — answer here
+    if (err instanceof QueryError) return res.status(400).json({ error: err.message });
+    req.log.error({ err }, 'GET /deals: unexpected query error');
+    return res.status(500).json({ error: 'Failed to fetch deals' });
+  }
+
+  try {
+    const [result] = await Deal.aggregate([
+      { $match: q.match },
+      { $addFields: { _sortExpiry: { $ifNull: ['$validUntil', FAR_FUTURE] } } },
+      { $sort: q.sort },
+      {
+        $facet: {
+          items: [{ $skip: (q.page - 1) * q.limit }, { $limit: q.limit }, { $project: HIDDEN_FIELDS }],
+          total: [{ $count: 'n' }],
+        },
+      },
+    ]);
+    const total = result.total[0] ? result.total[0].n : 0;
+    res.json({
+      items: result.items,
+      total,
+      page: q.page,
+      pages: Math.max(1, Math.ceil(total / q.limit)),
+      limit: q.limit,
+    });
+  } catch (err) {
+    req.log.error({ err }, 'GET /deals failed');
     res.status(500).json({ error: 'Failed to fetch deals' });
   }
 });
 
 // ─── GET /deals/meta ─────────────────────────────────────────────────────────
 /**
- * Returns unique values for all filterable fields — used by the frontend
- * to populate dropdown options dynamically without hardcoding them.
+ * Filter options with live counts, plus real headline stats for the UI.
+ * Computed from data — nothing hardcoded.
  */
 router.get('/meta', async (req, res) => {
   try {
-    const [banks, categories, cardTypes, offerTypes, channels] = await Promise.all([
-      Deal.distinct('bank',         { isActive: true }),
-      Deal.distinct('category',     { isActive: true }),
-      Deal.distinct('cardType',     { isActive: true }),
-      Deal.distinct('offerType',    { isActive: true }),
-      Deal.distinct('usageChannel', { isActive: true }),
+    const live = liveFilter({ showSamples: showSamples() });
+    const weekFromNow = new Date(Date.now() + 7 * DAY_MS);
+
+    const [facets] = await Deal.aggregate([
+      { $match: live },
+      {
+        $facet: {
+          categories: [{ $group: { _id: '$category', count: { $sum: 1 } } }, { $sort: { _id: 1 } }],
+          providers: [
+            { $group: { _id: { name: '$bank', type: '$providerType' }, count: { $sum: 1 } } },
+            { $sort: { '_id.name': 1 } },
+          ],
+          card: [{ $match: modeFilter('card') }, { $count: 'n' }],
+          paylater: [{ $match: modeFilter('paylater') }, { $count: 'n' }],
+          brands: [{ $group: { _id: '$brand' } }, { $count: 'n' }],
+          endingSoon: [{ $match: { validUntil: { $ne: null, $lte: weekFromNow } } }, { $count: 'n' }],
+          lastUpdated: [{ $group: { _id: null, at: { $max: '$lastVerified' } } }],
+        },
+      },
     ]);
 
-    res.json({ banks, categories, cardTypes, offerTypes, channels });
+    const n = (arr) => (arr[0] ? arr[0].n : 0);
+    res.json({
+      categories: facets.categories.map((c) => ({ name: c._id, count: c.count })),
+      providers: facets.providers.map((p) => ({ name: p._id.name, type: p._id.type || 'bank', count: p.count })),
+      modes: { card: n(facets.card), paylater: n(facets.paylater) },
+      stats: {
+        live: n(facets.card) + n(facets.paylater),
+        providers: facets.providers.length,
+        brands: n(facets.brands),
+        endingSoon: n(facets.endingSoon),
+        lastUpdated: facets.lastUpdated[0] ? facets.lastUpdated[0].at : null,
+      },
+    });
   } catch (err) {
-    console.error('GET /deals/meta error:', err.message);
+    req.log.error({ err }, 'GET /deals/meta failed');
     res.status(500).json({ error: 'Failed to fetch metadata' });
+  }
+});
+
+// ─── GET /deals/:id ───────────────────────────────────────────────────────────
+/**
+ * A single offer (used by shareable links and the details view).
+ * Expired offers are still returned — the UI shows them as "expired" —
+ * but inactive ones and hidden sources are not.
+ */
+router.get('/:id', async (req, res) => {
+  if (!mongoose.isValidObjectId(req.params.id)) {
+    return res.status(400).json({ error: 'Invalid deal id' });
+  }
+  try {
+    const sources = showSamples() ? ['scraped', 'sample'] : ['scraped'];
+    const deal = await Deal.findOne(
+      { _id: req.params.id, isActive: true, source: { $in: sources } },
+      HIDDEN_FIELDS
+    ).lean();
+    if (!deal) return res.status(404).json({ error: 'Deal not found' });
+    res.json(deal);
+  } catch (err) {
+    req.log.error({ err }, 'GET /deals/:id failed');
+    res.status(500).json({ error: 'Failed to fetch deal' });
   }
 });
 

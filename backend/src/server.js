@@ -8,6 +8,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const mongoose = require('mongoose');
 const client = require('prom-client');
+const pinoHttp = require('pino-http');
 
 // Initialize default Node.js metrics collection (memory, CPU, event loop, etc.)
 client.collectDefaultMetrics();
@@ -29,6 +30,23 @@ app.disable('x-powered-by');
 // real client IP from X-Forwarded-For — otherwise every user shares nginx's IP
 // and therefore one rate-limit bucket.
 app.set('trust proxy', 1);
+
+// Structured JSON request logs (one line per request) → stdout → Promtail → Loki.
+// Gives an audit trail of who called what: client IP, method, path, status, duration.
+// Probe/scrape endpoints are skipped so logs aren't flooded every few seconds, and
+// credential-bearing headers are redacted so secrets never reach the log store.
+app.use(
+  pinoHttp({
+    level: process.env.LOG_LEVEL || (process.env.NODE_ENV === 'test' ? 'silent' : 'info'),
+    autoLogging: { ignore: (req) => ['/health', '/ready', '/metrics'].includes(req.url) },
+    redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
+    customProps: (req) => ({ clientIp: req.ip }),
+    serializers: {
+      req: (req) => ({ method: req.method, url: req.url, userAgent: req.headers['user-agent'] }),
+      res: (res) => ({ statusCode: res.statusCode }),
+    },
+  })
+);
 
 // Standard security headers (X-Content-Type-Options, HSTS, frame protection, ...)
 app.use(helmet());

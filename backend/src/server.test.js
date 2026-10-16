@@ -41,6 +41,17 @@ describe('Security hardening', () => {
     const res = await request(app).get(`/deals?search=${'a'.repeat(101)}`);
     expect(res.statusCode).toBe(400);
   });
+
+  it('rejects invalid filter values before touching the database', async () => {
+    const res = await request(app).get('/deals?mode=everything');
+    expect(res.statusCode).toBe(400);
+    expect(res.body.error).toMatch(/mode/);
+  });
+
+  it('rejects malformed deal ids', async () => {
+    const res = await request(app).get('/deals/not-an-id');
+    expect(res.statusCode).toBe(400);
+  });
 });
 
 describe('escapeRegex', () => {

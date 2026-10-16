@@ -1,304 +1,157 @@
 /**
- * App.jsx — v4 (Modern E-Commerce Website Architecture)
+ * App.jsx — page layout and data flow.
+ *
+ * Filtering, sorting and paging happen on the server (GET /deals); the page only
+ * ever downloads one page of results. Filter state lives in the URL, so every
+ * view — including an open offer (?deal=<id>) — is a shareable link.
  */
+import { useCallback, useEffect, useState } from 'react';
+import Header from './components/Header';
+import Hero from './components/Hero';
+import ModeTabs from './components/ModeTabs';
+import Filters from './components/Filters';
+import DealGrid from './components/DealGrid';
+import DealDetails from './components/DealDetails';
+import Footer from './components/Footer';
+import Toast from './components/Toast';
+import { useToast } from './hooks/useToast';
+import { fetchDeal, fetchDeals, fetchMeta } from './api';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import Navbar            from './components/Navbar';
-import Hero              from './components/Hero';
-import SpotlightCarousel from './components/SpotlightCarousel';
-import CategoryTabs      from './components/CategoryTabs';
-import FilterBar         from './components/FilterBar';
-import DealList          from './components/DealList';
-import Footer            from './components/Footer';
-import Toast             from './components/Toast';
-import DealModal         from './components/DealModal';
-import { useToast }      from './hooks/useToast';
+const PAGE_SIZE = 24;
+const DEFAULT_FILTERS = { mode: 'card', category: '', provider: '', cardType: '', sort: 'ending', search: '' };
+const URL_KEYS = { mode: 'mode', category: 'category', provider: 'provider', cardType: 'card', sort: 'sort', search: 'q' };
 
-const API_BASE = '/api';
-
-// URL state helpers
-function readParams() {
+function readUrl() {
   const p = new URLSearchParams(window.location.search);
-  return {
-    search:      p.get('q')        || '',
-    bank:        p.get('bank')     || '',
-    category:    p.get('category') || '',
-    cardType:    p.get('cardType') || '',
-    offerType:   p.get('offerType')|| '',
-    channel:     p.get('channel')  || '',
-    sortBy:      p.get('sort')     || 'newest',
-    showExpired: p.get('expired')  === 'true',
-  };
+  const filters = { ...DEFAULT_FILTERS };
+  Object.entries(URL_KEYS).forEach(([key, param]) => {
+    if (p.get(param)) filters[key] = p.get(param);
+  });
+  if (!['card', 'paylater'].includes(filters.mode)) filters.mode = 'card';
+  return { filters, dealId: p.get('deal') };
 }
 
-function pushParams(state) {
+function writeUrl(filters, dealId) {
   const p = new URLSearchParams();
-  if (state.search)              p.set('q',         state.search);
-  if (state.bank)                p.set('bank',      state.bank);
-  if (state.category)            p.set('category',  state.category);
-  if (state.cardType)            p.set('cardType',  state.cardType);
-  if (state.offerType)           p.set('offerType', state.offerType);
-  if (state.channel)             p.set('channel',   state.channel);
-  if (state.sortBy !== 'newest') p.set('sort',      state.sortBy);
-  if (state.showExpired)         p.set('expired',   'true');
+  Object.entries(URL_KEYS).forEach(([key, param]) => {
+    if (filters[key] && filters[key] !== DEFAULT_FILTERS[key]) p.set(param, filters[key]);
+  });
+  if (dealId) p.set('deal', dealId);
   const qs = p.toString();
   window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
 }
 
+/** Returns `value` only after it has stopped changing for `delay` ms. */
+function useDebounced(value, delay) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(t);
+  }, [value, delay]);
+  return debounced;
+}
+
+const EMPTY_RESULTS = { key: null, items: [], total: 0, page: 1, pages: 1, loadingMore: false, error: null };
+
 export default function App() {
-  const [allDeals,    setAllDeals]    = useState([]);
-  const [loading,     setLoading]     = useState(true);
-  const [error,       setError]       = useState(null);
-  const [banks,       setBanks]       = useState([]);
-  const [categories,  setCategories]  = useState([]);
-  const [lastUpdated, setLastUpdated] = useState(null);
+  const [initial] = useState(readUrl); // read the URL once, on first render
+  const [filters, setFilters] = useState(initial.filters);
+  const [meta, setMeta] = useState(null);
+  const [results, setResults] = useState(EMPTY_RESULTS);
+  const [selected, setSelected] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
+  const { toasts, showToast } = useToast();
 
-  // Active section shortcut tab in Navbar ('all' | 'featured' | 'bnpl' | 'expiring')
-  const [activeSection, setActiveSection] = useState('all');
+  const search = useDebounced(filters.search, 300);
+  const query = { ...filters, search };
+  // Results remember which query they belong to; if that isn't the current
+  // query, a request is in flight — so "loading" is derived, not stored.
+  const queryKey = JSON.stringify([filters.mode, filters.category, filters.provider, filters.cardType, filters.sort, search, reloadKey]);
+  const loading = results.key !== queryKey;
 
-  const initialParams = readParams();
-  const [search,      setSearch]      = useState(initialParams.search);
-  const [bank,        setBank]        = useState(initialParams.bank);
-  const [category,    setCategory]    = useState(initialParams.category);
-  const [cardType,    setCardType]    = useState(initialParams.cardType);
-  const [offerType,   setOfferType]   = useState(initialParams.offerType);
-  const [channel,     setChannel]     = useState(initialParams.channel);
-  const [sortBy,      setSortBy]      = useState(initialParams.sortBy);
-  const [showExpired, setShowExpired] = useState(initialParams.showExpired);
-
-  const { toasts, showToast }     = useToast();
-
-  const [selectedDeal, setSelectedDeal] = useState(null);
-
+  // ── Filter options + headline stats (once) ────────────────────────────────
   useEffect(() => {
-    document.documentElement.setAttribute('data-theme', 'dark');
+    const ctrl = new AbortController();
+    fetchMeta(ctrl.signal).then(setMeta).catch(() => {});
+    return () => ctrl.abort();
   }, []);
 
+  // ── First page whenever a filter changes; stale requests are aborted ──────
   useEffect(() => {
-    pushParams({ search, bank, category, cardType, offerType, channel, sortBy, showExpired });
-  }, [search, bank, category, cardType, offerType, channel, sortBy, showExpired]);
+    const ctrl = new AbortController();
+    fetchDeals({ ...query, page: 1, limit: PAGE_SIZE }, ctrl.signal)
+      .then((data) => setResults({ ...EMPTY_RESULTS, ...data, key: queryKey }))
+      .catch((err) => {
+        if (err.name !== 'AbortError') setResults({ ...EMPTY_RESULTS, key: queryKey, error: err.message });
+      });
+    return () => ctrl.abort();
+    // queryKey captures every input of `query`
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryKey]);
+
+  // ── Open a shared ?deal=<id> link ─────────────────────────────────────────
+  useEffect(() => {
+    if (!initial.dealId) return;
+    fetchDeal(initial.dealId)
+      .then(setSelected)
+      .catch(() => showToast('That offer is no longer available', 'error'));
+  }, [initial.dealId, showToast]);
 
   useEffect(() => {
-    async function loadData() {
-      setLoading(true);
-      setError(null);
-      try {
-        const [dealsRes, metaRes] = await Promise.all([
-          fetch(`${API_BASE}/deals?all=true`),
-          fetch(`${API_BASE}/deals/meta`),
-        ]);
-        if (!dealsRes.ok) throw new Error(`Deals API ${dealsRes.status}`);
-        if (!metaRes.ok)  throw new Error(`Meta API ${metaRes.status}`);
+    writeUrl(filters, selected?._id);
+  }, [filters, selected]);
 
-        const dealsData = await dealsRes.json();
-        const metaData  = await metaRes.json();
+  const updateFilters = useCallback((patch) => setFilters((f) => ({ ...f, ...patch })), []);
 
-        const now = new Date();
-        const tagged = dealsData.deals.map((d) => ({
-          ...d,
-          _isExpired: d.validUntil ? new Date(d.validUntil) < now : false,
-        }));
-
-        setAllDeals(tagged);
-        setBanks(metaData.banks.sort());
-        setCategories(metaData.categories.sort());
-
-        const scraped = tagged.filter((d) => d.source === 'scraped' && d.lastVerified);
-        if (scraped.length > 0) {
-          const latest = new Date(Math.max(...scraped.map((d) => new Date(d.lastVerified))));
-          setLastUpdated(latest);
-        }
-      } catch (err) {
-        console.error('Failed to load data:', err.message);
-        setError('Could not load deals. Please check if the API server is running on port 5000.');
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadData();
+  const changeMode = useCallback((mode) => {
+    // Provider and card type differ between the two modes, so start them fresh
+    setFilters((f) => ({ ...f, mode, provider: '', cardType: '' }));
   }, []);
 
-  const activeCount  = useMemo(() => allDeals.filter((d) => !d._isExpired).length, [allDeals]);
-  const scrapedCount = useMemo(() => allDeals.filter((d) => d.source === 'scraped').length, [allDeals]);
+  const resetFilters = useCallback(() => {
+    setFilters((f) => ({ ...DEFAULT_FILTERS, mode: f.mode }));
+  }, []);
 
-  const uniqueBrandsCount = useMemo(() => new Set(allDeals.map(d => d.brand)).size, [allDeals]);
-  const bnplCount = useMemo(() => banks.filter(b => b.toLowerCase().includes('koko') || b.toLowerCase().includes('mintpay')).length || 2, [banks]);
-  const supportedBanksCount = useMemo(() => Math.max(0, banks.length - bnplCount) || 12, [banks, bnplCount]);
-
-  // Navbar section click handler
-  const handleNavClick = (section) => {
-    setActiveSection(section);
-    if (section === 'all') {
-      setBank(''); setCategory(''); setSearch(''); setSortBy('newest');
-    } else if (section === 'featured') {
-      setSortBy('discount');
-    } else if (section === 'bnpl') {
-      setBank('Koko');
-    } else if (section === 'expiring') {
-      setSortBy('expiring');
+  const loadMore = async () => {
+    setResults((r) => ({ ...r, loadingMore: true }));
+    try {
+      const data = await fetchDeals({ ...query, page: results.page + 1, limit: PAGE_SIZE });
+      setResults((r) => ({ ...r, ...data, items: [...r.items, ...data.items], loadingMore: false }));
+    } catch {
+      setResults((r) => ({ ...r, loadingMore: false }));
+      showToast('Could not load more offers', 'error');
     }
-    // Scroll smoothly to deals area
-    const el = document.getElementById('catalog-section');
-    if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Client-side filter + sort
-  const filteredDeals = useMemo(() => {
-    const q = search.toLowerCase();
-
-    let results = allDeals.filter((deal) => {
-      if (!showExpired && deal._isExpired) return false;
-
-      const matchesSearch =
-        !q ||
-        deal.brand.toLowerCase().includes(q) ||
-        deal.discountText.toLowerCase().includes(q) ||
-        deal.bank.toLowerCase().includes(q) ||
-        deal.category.toLowerCase().includes(q);
-
-      const matchesBank     = !bank      || deal.bank === bank;
-      const matchesCategory = !category  || deal.category === category;
-      const matchesCardType = !cardType  || deal.cardType === cardType || deal.cardType === 'both';
-      const matchesOfferType= !offerType || deal.offerType === offerType;
-      const matchesChannel  = !channel   || deal.usageChannel === channel || deal.usageChannel === 'both';
-
-      return matchesSearch && matchesBank && matchesCategory && matchesCardType && matchesOfferType && matchesChannel;
-    });
-
-    results = [...results].sort((a, b) => {
-      if (sortBy === 'expiring') {
-        if (!a.validUntil) return 1;
-        if (!b.validUntil) return -1;
-        return new Date(a.validUntil) - new Date(b.validUntil);
-      }
-      if (sortBy === 'discount') {
-        return (b.discountValue || 0) - (a.discountValue || 0);
-      }
-      if (sortBy === 'az') {
-        return a.brand.localeCompare(b.brand);
-      }
-      return new Date(b.createdAt) - new Date(a.createdAt);
-    });
-
-    return results;
-  }, [allDeals, search, bank, category, cardType, offerType, channel, sortBy, showExpired]);
-
-  const handleShare = useCallback((deal) => {
-    const text = `${deal.brand} — ${deal.discountText} (${deal.bank})`;
-    const url  = deal.scrapedFrom || window.location.href;
-
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(`${text}\n${url}`)
-        .then(() => showToast('Deal link copied to clipboard! 📋', 'success'))
-        .catch(() => showToast('Could not copy automatically', 'error'));
-    } else {
-      showToast('Clipboard not supported in browser', 'error');
-    }
+  const shareDeal = useCallback((deal) => {
+    const url = new URL(window.location.href);
+    url.search = `?deal=${deal._id}`;
+    if (!navigator.clipboard) return showToast('Copying is not supported in this browser', 'error');
+    navigator.clipboard.writeText(url.toString())
+      .then(() => showToast('Link copied', 'success'))
+      .catch(() => showToast('Could not copy the link', 'error'));
   }, [showToast]);
 
-  const resetFilters = () => {
-    setSearch(''); setBank(''); setCategory('');
-    setCardType(''); setOfferType(''); setChannel('');
-    setSortBy('newest'); setShowExpired(false);
-  };
-
-  function formatLastUpdated(date) {
-    if (!date) return 'Just now';
-    const diff = Math.floor((Date.now() - date) / 60000);
-    if (diff < 1)  return 'Just now';
-    if (diff < 60) return `${diff}m ago`;
-    const hrs = Math.floor(diff / 60);
-    return `${hrs}h ago`;
-  }
-
   return (
-    <div className="ecommerce-app">
-      <Navbar
-        activeCount={activeCount}
-        scrapedCount={scrapedCount}
-        lastUpdated={lastUpdated}
-        onNavClick={handleNavClick}
-        activeSection={activeSection}
-        formatLastUpdated={formatLastUpdated}
-      />
+    <div className="app">
+      <a className="skip-link" href="#offers">Skip to offers</a>
+      <Header mode={filters.mode} onModeChange={changeMode} lastUpdated={meta?.stats?.lastUpdated} />
+      <Hero search={filters.search} onSearch={(v) => updateFilters({ search: v })} stats={meta?.stats} />
 
-      {/* Hero Showcase Section */}
-      <Hero
-        search={search}
-        onSearch={setSearch}
-        activeCount={activeCount}
-        supportedBanksCount={supportedBanksCount}
-        bnplCount={bnplCount}
-        uniqueBrandsCount={uniqueBrandsCount}
-      />
-
-      <main className="main-content" id="catalog-section">
-        <div className="main-content__container">
-          {/* Spotlight Carousel for Top Savings */}
-          <SpotlightCarousel
-            deals={allDeals}
-            onSelectDeal={setSelectedDeal}
-          />
-
-          {/* Interactive Category Tabs */}
-          <div className="catalog-header">
-            <div className="catalog-header__top">
-              <h2 className="catalog-title">Explore All Promotions</h2>
-              <span className="catalog-count">
-                Showing <strong>{filteredDeals.length}</strong> of {activeCount} live offers
-              </span>
-            </div>
-            <CategoryTabs
-              categories={categories}
-              selectedCategory={category}
-              onSelectCategory={setCategory}
-            />
-          </div>
-
-          {/* E-Commerce Refinement Toolbar */}
-          <FilterBar
-            search={search}           onSearch={setSearch}
-            bank={bank}               onBank={setBank}
-            category={category}       onCategory={setCategory}
-            cardType={cardType}       onCardType={setCardType}
-            offerType={offerType}     onOfferType={setOfferType}
-            channel={channel}         onChannel={setChannel}
-            sortBy={sortBy}           onSortBy={setSortBy}
-            showExpired={showExpired}   onShowExpired={setShowExpired}
-            banks={banks}
-            categories={categories}
-            onReset={resetFilters}
-          />
-
-          {/* Deal Catalog Grid */}
-          <DealList
-            deals={filteredDeals}
-            loading={loading}
-            onShare={handleShare}
-            onReset={resetFilters}
-            onSelect={setSelectedDeal}
-          />
-        </div>
+      <main id="offers" className="container main">
+        <ModeTabs mode={filters.mode} counts={meta?.modes} onChange={changeMode} />
+        <Filters mode={filters.mode} filters={filters} meta={meta} onChange={updateFilters} onReset={resetFilters} />
+        <DealGrid
+          state={{ ...results, loading }}
+          onOpen={setSelected}
+          onRetry={() => setReloadKey((k) => k + 1)}
+          onReset={resetFilters}
+          onLoadMore={loadMore}
+        />
       </main>
 
-      {/* Professional Footer */}
-      <Footer
-        onBankClick={(b) => {
-          setBank(b);
-          const el = document.getElementById('catalog-section');
-          if (el) el.scrollIntoView({ behavior: 'smooth' });
-        }}
-        onCategoryClick={(c) => {
-          setCategory(c);
-          const el = document.getElementById('catalog-section');
-          if (el) el.scrollIntoView({ behavior: 'smooth' });
-        }}
-      />
-
-      {/* E-Commerce Deal Modal Popup */}
-      <DealModal deal={selectedDeal} onClose={() => setSelectedDeal(null)} />
-
-      {/* Toast Popups */}
+      <Footer />
+      <DealDetails deal={selected} onClose={() => setSelected(null)} onShare={shareDeal} />
       <Toast toasts={toasts} />
     </div>
   );

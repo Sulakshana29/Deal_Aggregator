@@ -14,10 +14,10 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      // Proxy /api → http://localhost:5000
+      // Proxy /api → http://localhost:5000 (override with VITE_API_TARGET)
       // e.g. fetch('/api/deals') → http://localhost:5000/deals
       '/api': {
-        target: 'http://localhost:5000',
+        target: process.env.VITE_API_TARGET || 'http://localhost:5000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, ''),
       },

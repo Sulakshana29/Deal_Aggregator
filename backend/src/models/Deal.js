@@ -23,10 +23,21 @@ const dealSchema = new mongoose.Schema(
       // Human-readable summary shown on the card (e.g. "25% off total bill")
     },
 
+    // Canonical provider name (bank or BNPL), normalized by scraper/providers.js
     bank: {
       type: String,
       required: [true, 'bank is required'],
       trim: true,
+    },
+
+    // 'bank' = card issuer discount, 'bnpl' = Buy Now Pay Later provider
+    providerType: {
+      type: String,
+      enum: {
+        values: ['bank', 'bnpl'],
+        message: 'providerType must be "bank" or "bnpl"',
+      },
+      default: 'bank',
     },
 
     category: {
@@ -156,13 +167,21 @@ const dealSchema = new mongoose.Schema(
     },
 
     // ── Source tracking ────────────────────────────────────────────────────
+    // 'scraped' = found on mypromo.lk, 'sample' = local dev data from seed.js
+    // (never shown in production), 'manual' = legacy hand-entered data
     source: {
       type: String,
       enum: {
-        values: ['manual', 'scraped'],
-        message: 'source must be "manual" or "scraped"',
+        values: ['manual', 'scraped', 'sample'],
+        message: 'source must be "manual", "scraped" or "sample"',
       },
       default: 'manual',
+    },
+
+    // mypromo.lk's own promotion id — the scraper's upsert key
+    externalId: {
+      type: String,
+      default: null,
     },
 
     scrapedFrom: {
@@ -176,15 +195,18 @@ const dealSchema = new mongoose.Schema(
 );
 
 /**
- * Compound index used by the scraper (Phase 2) to detect duplicate deals
- * before upserting — prevents the same offer being inserted twice.
+ * One document per mypromo.lk promotion. Partial, so legacy/sample documents
+ * without an externalId are not affected.
  */
-dealSchema.index({ brand: 1, discountText: 1, validUntil: 1 }, { unique: false });
+dealSchema.index(
+  { source: 1, externalId: 1 },
+  { unique: true, partialFilterExpression: { externalId: { $type: 'string' } } }
+);
 
 /**
- * Index for the most common query pattern:
- * active deals filtered by bank + category
+ * Index for the API's main query: live offers, filtered by mode and category,
+ * sorted by expiry.
  */
-dealSchema.index({ isActive: 1, bank: 1, category: 1 });
+dealSchema.index({ isActive: 1, providerType: 1, category: 1, validUntil: 1 });
 
 module.exports = mongoose.model('Deal', dealSchema);

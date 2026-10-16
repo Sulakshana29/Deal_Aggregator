@@ -46,6 +46,15 @@ jobs:
         working-directory: ./frontend
         run: npm run test
 
+      # Scraper Checks — parser rules are unit-tested against real mypromo.lk text
+      - name: Install Scraper Dependencies
+        working-directory: ./scraper
+        run: npm install
+
+      - name: Test Scraper
+        working-directory: ./scraper
+        run: npm test
+
   # ─── 2. DOCKER BUILD & SCAN ──────────────────────────────────────────────
   docker-build-scan:
     name: Build & Scan Docker Images

@@ -12,8 +12,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 # Copy scraper source files (root-owned → read-only for the runtime user)
-COPY scrape.js   ./
-COPY brands.js   ./
+COPY scrape.js brands.js providers.js parse.js ./
 
 # Run as the unprivileged "node" user (UID 1000)
 USER node

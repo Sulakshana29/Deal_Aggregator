@@ -1,9 +1,14 @@
 # Deal Aggregator
 
 > A portfolio-grade **DevSecOps** project demonstrating Docker, Kubernetes, CI/CD, and security engineering.
-> Scrapes live Sri Lankan bank card promotions from [mypromo.lk](https://mypromo.lk) into a 3-tier web app.
+> Scrapes live Sri Lankan bank card offers and pay-later plans from [mypromo.lk](https://www.mypromo.lk) into a 3-tier web app — **DealVault**.
 
-**Status**: 🚧 Work in progress — building through 7 phases.
+**Status**: 🚧 Work in progress — see the phase table below.
+
+### What the app does
+- Two clear modes: **Card offers** (bank card discounts, cashback, buy-1-get-1) and **Pay later** (Koko, Mintpay, bank 0% instalment plans).
+- Every offer shows the benefit, bank and card type, valid days, minimum bill / cap and expiry, and links back to its source.
+- Only verifiable data is shown: offers come from mypromo.lk with their source id; expired or vanished offers are hidden automatically.
 
 ## Architecture
 
@@ -26,6 +31,7 @@
 | 5 | Monitoring (Prometheus + Grafana + cAdvisor) | ✅ Done |
 | 6 | Logging (Loki + Promtail) | ✅ Done |
 | 7 | Kubernetes — A: App & container hardening ([notes](docs/hardening/phase-a.md)) | ✅ Done |
+| 7 | Kubernetes — A.5: Data integrity, paginated API, request logging, UX ([notes](docs/hardening/phase-a5.md)) | ✅ Done |
 | 7 | Kubernetes — B: K8s hardening (StatefulSet, NetworkPolicies, PSA, Ingress, HPA) | ⏳ Pending |
 | 8 | CI/CD upgrade (parallel jobs, blocking scans, SAST, SBOM, signing) | ⏳ Pending |
 | 9 | GitOps (Argo CD) + in-cluster observability | ⏳ Pending |
@@ -46,7 +52,7 @@ The production stack spins up a full observability suite:
 - **Loki & Promtail**: Promtail reads raw Docker socket logs and ships them to Loki for centralized log querying in Grafana.
 
 ### 🛡️ Security Hardening
-Full rationale for each control: [docs/hardening/phase-a.md](docs/hardening/phase-a.md).
+Full rationale for each control: [phase-a.md](docs/hardening/phase-a.md) (app & containers) and [phase-a5.md](docs/hardening/phase-a5.md) (data integrity, API, logging).
 - **Read-only public API:** No write/delete endpoints are exposed — only the scraper and seed script write to MongoDB, over the internal network.
 - **Injection protection:** User input is regex-escaped (prevents ReDoS) and non-string query params are rejected (prevents NoSQL operator injection).
 - **Rate Limiting:** `express-rate-limit` per real client IP (`trust proxy` + `X-Forwarded-For` from nginx).
@@ -55,6 +61,9 @@ Full rationale for each control: [docs/hardening/phase-a.md](docs/hardening/phas
 - **Reproducible images:** `npm ci` from lockfiles, pinned base/service image versions, dev files excluded via `.dockerignore`.
 - **Database Auth:** MongoDB runs with root credentials from a git-ignored `.env` (compose refuses to start without them).
 - **Minimal network exposure (prod):** only port 80 is public. Backend, MongoDB, Prometheus, Loki and cAdvisor are internal-only; Grafana is bound to `127.0.0.1` (SSH tunnel); `/api/metrics` is blocked at nginx.
+- **Data integrity:** only scraped offers with a source id are public; sample data is labelled and hidden in production; offers that vanish are deactivated only after a healthy scrape run.
+- **Bounded, validated API:** server-side filtering with allow-listed parameters and a page size capped at 50.
+- **Request audit logs:** structured JSON per request (client IP, path, status, duration) via `pino-http`, credentials redacted, shipped to Loki.
 - **Graceful shutdown & health:** SIGTERM drains connections; `/health` (liveness) vs `/ready` (readiness, checks MongoDB).
 
 ## Running Locally
@@ -70,7 +79,7 @@ docker compose up --build
 # Run scraper once (separate profile)
 docker compose --profile scraper run --rm scraper
 
-# Seed dev data instead
+# Add labelled SAMPLE offers (local only; never touches scraped data)
 docker compose exec backend node seed.js
 ```
 
