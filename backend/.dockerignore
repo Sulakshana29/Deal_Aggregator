@@ -4,8 +4,6 @@ npm-debug.log
 .env.local
 .git
 .gitignore
-Dockerfile
-.dockerignore
 # Dev / test files — keep them out of the production image
 **/*.test.js
 coverage
