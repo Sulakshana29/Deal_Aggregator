@@ -92,7 +92,7 @@ services:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
       - prometheus-data:/prometheus
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"          # localhost only
     networks:
       - deal-network
 
@@ -102,7 +102,7 @@ services:
     container_name: deal-aggregator-grafana
     restart: always
     ports:
-      - "3001:3000" # Expose Grafana on 3001 to avoid conflicting with frontend dev server
+      - "127.0.0.1:3001:3000"          # Grafana on 3001 (3000 is the frontend); localhost only
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}   # "admin" fallback is for local dev only
     volumes:
@@ -125,7 +125,7 @@ services:
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8081:8080"          # host 8081 (8080 is often taken on Windows); Prometheus uses cadvisor:8080 internally
     networks:
       - deal-network
 

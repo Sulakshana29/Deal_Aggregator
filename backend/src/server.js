@@ -9,9 +9,32 @@ const helmet = require('helmet');
 const mongoose = require('mongoose');
 const client = require('prom-client');
 const pinoHttp = require('pino-http');
+const ScrapeRun = require('./models/ScrapeRun');
+const Deal = require('./models/Deal');
 
 // Initialize default Node.js metrics collection (memory, CPU, event loop, etc.)
 client.collectDefaultMetrics();
+
+// ─── Scraper Prometheus Metrics ──────────────────────────────────────────────
+const scraperLastRunGauge = new client.Gauge({
+  name: 'scraper_last_run_timestamp_seconds',
+  help: 'Unix timestamp of the most recent completed scraper run',
+});
+
+const scraperOffersFoundGauge = new client.Gauge({
+  name: 'scraper_last_offers_found',
+  help: 'Number of active offers parsed during the last scraper run',
+});
+
+const scraperDurationGauge = new client.Gauge({
+  name: 'scraper_last_duration_seconds',
+  help: 'Duration in seconds of the last scraper run',
+});
+
+const scraperStatusGauge = new client.Gauge({
+  name: 'scraper_last_status',
+  help: 'Status of the last scraper run: 1 = ok, 0 = degraded or failed',
+});
 
 const dealsRouter = require('./routes/deals');
 
@@ -80,9 +103,63 @@ app.get('/ready', (_req, res) => {
   res.status(dbReady ? 200 : 503).json({ status: dbReady ? 'ready' : 'not ready', db: dbReady });
 });
 
+// System Status — public health, scrape freshness, and drift guard status
+app.get('/status', async (_req, res) => {
+  const dbReady = mongoose.connection.readyState === 1;
+  let lastRun = null;
+  let liveOffers = 0;
+
+  if (dbReady) {
+    try {
+      lastRun = await ScrapeRun.findOne().sort({ completedAt: -1 }).lean();
+      liveOffers = await Deal.countDocuments({ isActive: true });
+    } catch {
+      // Ignore
+    }
+  }
+
+  const isDegraded = lastRun?.status === 'degraded';
+  res.json({
+    status: !dbReady ? 'database_unreachable' : isDegraded ? 'degraded' : 'healthy',
+    timestamp: new Date().toISOString(),
+    database: { connected: dbReady },
+    driftGuard: {
+      active: true,
+      threshold: '50% drop triggers degraded mode & halts deactivation',
+    },
+    scraper: lastRun
+      ? {
+          status: lastRun.status,
+          completedAt: lastRun.completedAt,
+          durationSeconds: Number(((lastRun.durationMs || 0) / 1000).toFixed(1)),
+          pages: `${lastRun.pagesOk}/${lastRun.pagesTotal}`,
+          offersFound: lastRun.offersFound,
+          newInserts: lastRun.newInserts,
+          updated: lastRun.updated,
+          deactivated: lastRun.deactivated,
+          notes: lastRun.notes || undefined,
+        }
+      : null,
+    catalog: {
+      liveOffers,
+    },
+  });
+});
+
 // Prometheus metrics endpoint — scraped internally by Prometheus.
 // Blocked from the public internet at the nginx layer (see frontend/nginx.conf).
 app.get('/metrics', async (_req, res) => {
+  try {
+    const lastRun = await ScrapeRun.findOne().sort({ completedAt: -1 }).lean();
+    if (lastRun) {
+      scraperLastRunGauge.set(Math.floor(new Date(lastRun.completedAt).getTime() / 1000));
+      scraperOffersFoundGauge.set(lastRun.offersFound || 0);
+      scraperDurationGauge.set((lastRun.durationMs || 0) / 1000);
+      scraperStatusGauge.set(lastRun.status === 'ok' ? 1 : 0);
+    }
+  } catch {
+    // If DB is temporarily unavailable, still return default metrics
+  }
   res.set('Content-Type', client.register.contentType);
   res.end(await client.register.metrics());
 });

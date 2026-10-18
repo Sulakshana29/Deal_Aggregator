@@ -1,47 +1,74 @@
 /**
- * App.jsx — page layout and data flow.
+ * App.jsx — page layout, wallet state, and recommender flow.
  *
- * Filtering, sorting and paging happen on the server (GET /deals); the page only
- * ever downloads one page of results. Filter state lives in the URL, so every
- * view — including an open offer (?deal=<id>) — is a shareable link.
+ * Implements Option A (wallet-first experience):
+ * - Browser localStorage wallet (no login needed)
+ * - "Which card should I use?" smart store calculator
+ * - Single unified deal feed with "Only My Cards" and "Valid Today" filters
+ * - Shareable filter state in URL
  */
 import { useCallback, useEffect, useState } from 'react';
 import Header from './components/Header';
 import Hero from './components/Hero';
-import ModeTabs from './components/ModeTabs';
+import BestCardSection from './components/BestCardSection';
 import Filters from './components/Filters';
 import DealGrid from './components/DealGrid';
 import DealDetails from './components/DealDetails';
+import WalletModal from './components/WalletModal';
 import Footer from './components/Footer';
 import Toast from './components/Toast';
 import { useToast } from './hooks/useToast';
 import { fetchDeal, fetchDeals, fetchMeta } from './api';
+import { getWallet, saveWallet, serializeWallet } from './lib/wallet';
 
 const PAGE_SIZE = 24;
-const DEFAULT_FILTERS = { mode: 'card', category: '', provider: '', cardType: '', sort: 'ending', search: '' };
-const URL_KEYS = { mode: 'mode', category: 'category', provider: 'provider', cardType: 'card', sort: 'sort', search: 'q' };
+const DEFAULT_FILTERS = {
+  mode: '',
+  category: '',
+  provider: '',
+  cardType: '',
+  day: '',
+  walletOnly: false,
+  sort: 'ending',
+  search: '',
+};
+
+const URL_KEYS = {
+  mode: 'mode',
+  category: 'category',
+  provider: 'provider',
+  cardType: 'card',
+  day: 'day',
+  walletOnly: 'walletOnly',
+  sort: 'sort',
+  search: 'q',
+};
 
 function readUrl() {
   const p = new URLSearchParams(window.location.search);
   const filters = { ...DEFAULT_FILTERS };
   Object.entries(URL_KEYS).forEach(([key, param]) => {
-    if (p.get(param)) filters[key] = p.get(param);
+    const val = p.get(param);
+    if (val) {
+      if (key === 'walletOnly') filters[key] = val === 'true';
+      else filters[key] = val;
+    }
   });
-  if (!['card', 'paylater'].includes(filters.mode)) filters.mode = 'card';
   return { filters, dealId: p.get('deal') };
 }
 
 function writeUrl(filters, dealId) {
   const p = new URLSearchParams();
   Object.entries(URL_KEYS).forEach(([key, param]) => {
-    if (filters[key] && filters[key] !== DEFAULT_FILTERS[key]) p.set(param, filters[key]);
+    if (filters[key] && filters[key] !== DEFAULT_FILTERS[key]) {
+      p.set(param, String(filters[key]));
+    }
   });
   if (dealId) p.set('deal', dealId);
   const qs = p.toString();
   window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
 }
 
-/** Returns `value` only after it has stopped changing for `delay` ms. */
 function useDebounced(value, delay) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
@@ -54,42 +81,75 @@ function useDebounced(value, delay) {
 const EMPTY_RESULTS = { key: null, items: [], total: 0, page: 1, pages: 1, loadingMore: false, error: null };
 
 export default function App() {
-  const [initial] = useState(readUrl); // read the URL once, on first render
+  const [initial] = useState(readUrl);
   const [filters, setFilters] = useState(initial.filters);
   const [meta, setMeta] = useState(null);
   const [results, setResults] = useState(EMPTY_RESULTS);
   const [selected, setSelected] = useState(null);
   const [reloadKey, setReloadKey] = useState(0);
+
+  // Wallet state stored locally in the browser
+  const [wallet, setWallet] = useState(getWallet);
+  const [isWalletOpen, setIsWalletOpen] = useState(false);
+
   const { toasts, showToast } = useToast();
 
+  const handleSaveWallet = (updatedCards) => {
+    setWallet(updatedCards);
+    saveWallet(updatedCards);
+  };
+
   const search = useDebounced(filters.search, 300);
-  const query = { ...filters, search };
-  // Results remember which query they belong to; if that isn't the current
-  // query, a request is in flight — so "loading" is derived, not stored.
-  const queryKey = JSON.stringify([filters.mode, filters.category, filters.provider, filters.cardType, filters.sort, search, reloadKey]);
+
+  // Build API query parameters
+  const queryParams = {
+    mode: filters.mode || undefined,
+    category: filters.category || undefined,
+    provider: filters.provider || undefined,
+    cardType: filters.cardType || undefined,
+    day: filters.day || undefined,
+    search: search || undefined,
+    sort: filters.sort || 'ending',
+    wallet: filters.walletOnly && wallet.length > 0 ? serializeWallet(wallet) : undefined,
+  };
+
+  const queryKey = JSON.stringify([
+    filters.mode,
+    filters.category,
+    filters.provider,
+    filters.cardType,
+    filters.day,
+    filters.walletOnly,
+    serializeWallet(wallet),
+    filters.sort,
+    search,
+    reloadKey,
+  ]);
+
   const loading = results.key !== queryKey;
 
-  // ── Filter options + headline stats (once) ────────────────────────────────
+  // ── Fetch metadata (categories, providers, stats, brands, today) ───────────
   useEffect(() => {
     const ctrl = new AbortController();
     fetchMeta(ctrl.signal).then(setMeta).catch(() => {});
     return () => ctrl.abort();
   }, []);
 
-  // ── First page whenever a filter changes; stale requests are aborted ──────
+  // ── Fetch deals on filter changes ─────────────────────────────────────────
   useEffect(() => {
     const ctrl = new AbortController();
-    fetchDeals({ ...query, page: 1, limit: PAGE_SIZE }, ctrl.signal)
+    fetchDeals({ ...queryParams, page: 1, limit: PAGE_SIZE }, ctrl.signal)
       .then((data) => setResults({ ...EMPTY_RESULTS, ...data, key: queryKey }))
       .catch((err) => {
-        if (err.name !== 'AbortError') setResults({ ...EMPTY_RESULTS, key: queryKey, error: err.message });
+        if (err.name !== 'AbortError') {
+          setResults({ ...EMPTY_RESULTS, key: queryKey, error: err.message });
+        }
       });
     return () => ctrl.abort();
-    // queryKey captures every input of `query`
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryKey]);
 
-  // ── Open a shared ?deal=<id> link ─────────────────────────────────────────
+  // ── Handle direct deep links (?deal=<id>) ─────────────────────────────────
   useEffect(() => {
     if (!initial.dealId) return;
     fetchDeal(initial.dealId)
@@ -103,19 +163,14 @@ export default function App() {
 
   const updateFilters = useCallback((patch) => setFilters((f) => ({ ...f, ...patch })), []);
 
-  const changeMode = useCallback((mode) => {
-    // Provider and card type differ between the two modes, so start them fresh
-    setFilters((f) => ({ ...f, mode, provider: '', cardType: '' }));
-  }, []);
-
   const resetFilters = useCallback(() => {
-    setFilters((f) => ({ ...DEFAULT_FILTERS, mode: f.mode }));
+    setFilters(DEFAULT_FILTERS);
   }, []);
 
   const loadMore = async () => {
     setResults((r) => ({ ...r, loadingMore: true }));
     try {
-      const data = await fetchDeals({ ...query, page: results.page + 1, limit: PAGE_SIZE });
+      const data = await fetchDeals({ ...queryParams, page: results.page + 1, limit: PAGE_SIZE });
       setResults((r) => ({ ...r, ...data, items: [...r.items, ...data.items], loadingMore: false }));
     } catch {
       setResults((r) => ({ ...r, loadingMore: false }));
@@ -134,24 +189,75 @@ export default function App() {
 
   return (
     <div className="app">
-      <a className="skip-link" href="#offers">Skip to offers</a>
-      <Header mode={filters.mode} onModeChange={changeMode} lastUpdated={meta?.stats?.lastUpdated} />
-      <Hero search={filters.search} onSearch={(v) => updateFilters({ search: v })} stats={meta?.stats} />
+      <a className="skip-link" href="#which-card">Skip to card recommender</a>
+      <Header
+        walletCount={wallet.length}
+        onOpenWallet={() => setIsWalletOpen(true)}
+        lastUpdated={meta?.stats?.lastUpdated}
+      />
 
-      <main id="offers" className="container main">
-        <ModeTabs mode={filters.mode} counts={meta?.modes} onChange={changeMode} />
-        <Filters mode={filters.mode} filters={filters} meta={meta} onChange={updateFilters} onReset={resetFilters} />
-        <DealGrid
-          state={{ ...results, loading }}
-          onOpen={setSelected}
-          onRetry={() => setReloadKey((k) => k + 1)}
-          onReset={resetFilters}
-          onLoadMore={loadMore}
-        />
+      <Hero
+        search={filters.search}
+        onSearch={(v) => updateFilters({ search: v })}
+        stats={meta?.stats}
+        onOpenWallet={() => setIsWalletOpen(true)}
+      />
+
+      <main className="container main">
+        <div id="which-card">
+          <BestCardSection
+            meta={meta}
+            wallet={wallet}
+            onOpenWallet={() => setIsWalletOpen(true)}
+            onOpenDeal={setSelected}
+          />
+        </div>
+
+        <section id="offers" className="offers-section" aria-label="All Deals and Promotions">
+          <div className="section-head">
+            <h2 className="section-title">
+              {filters.walletOnly ? 'Deals For Your Wallet Cards' : 'Browse All Deals & Promotions'}
+            </h2>
+            <p className="section-subtitle">
+              {filters.walletOnly
+                ? `Showing offers matching your ${wallet.length} saved card${wallet.length === 1 ? '' : 's'}`
+                : 'Explore live discounts, grocery offers, restaurant deals, and 0% instalment plans.'}
+            </p>
+          </div>
+
+          <Filters
+            filters={filters}
+            meta={meta}
+            wallet={wallet}
+            onChange={updateFilters}
+            onReset={resetFilters}
+            onOpenWallet={() => setIsWalletOpen(true)}
+          />
+
+          <DealGrid
+            state={{ ...results, loading }}
+            wallet={wallet}
+            onOpen={setSelected}
+            onRetry={() => setReloadKey((k) => k + 1)}
+            onReset={resetFilters}
+            onLoadMore={loadMore}
+          />
+        </section>
       </main>
 
       <Footer />
+
       <DealDetails deal={selected} onClose={() => setSelected(null)} onShare={shareDeal} />
+
+      <WalletModal
+        isOpen={isWalletOpen}
+        onClose={() => setIsWalletOpen(false)}
+        wallet={wallet}
+        onSaveWallet={handleSaveWallet}
+        meta={meta}
+        onToast={showToast}
+      />
+
       <Toast toasts={toasts} />
     </div>
   );

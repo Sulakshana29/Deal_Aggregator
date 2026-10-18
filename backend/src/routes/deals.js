@@ -3,7 +3,16 @@ const mongoose = require('mongoose');
 const router = express.Router();
 const rateLimit = require('express-rate-limit');
 const Deal = require('../models/Deal');
-const { buildDealQuery, liveFilter, modeFilter, QueryError } = require('../dealQuery');
+const {
+  buildDealQuery,
+  buildBestQuery,
+  liveFilter,
+  modeFilter,
+  colomboWeekday,
+  parseWallet,
+  QueryError,
+} = require('../dealQuery');
+const { rankOffers } = require('../savings');
 
 // ─── Read-only API ────────────────────────────────────────────────────────────
 // This API intentionally exposes NO write endpoints. Deals are written only by
@@ -106,6 +115,10 @@ router.get('/meta', async (req, res) => {
           card: [{ $match: modeFilter('card') }, { $count: 'n' }],
           paylater: [{ $match: modeFilter('paylater') }, { $count: 'n' }],
           brands: [{ $group: { _id: '$brand' } }, { $count: 'n' }],
+          brandsList: [
+            { $group: { _id: '$brand', count: { $sum: 1 } } },
+            { $sort: { count: -1, _id: 1 } },
+          ],
           endingSoon: [{ $match: { validUntil: { $ne: null, $lte: weekFromNow } } }, { $count: 'n' }],
           lastUpdated: [{ $group: { _id: null, at: { $max: '$lastVerified' } } }],
         },
@@ -116,7 +129,9 @@ router.get('/meta', async (req, res) => {
     res.json({
       categories: facets.categories.map((c) => ({ name: c._id, count: c.count })),
       providers: facets.providers.map((p) => ({ name: p._id.name, type: p._id.type || 'bank', count: p.count })),
+      brands: facets.brandsList.map((b) => ({ name: b._id, count: b.count })),
       modes: { card: n(facets.card), paylater: n(facets.paylater) },
+      today: colomboWeekday(),
       stats: {
         live: n(facets.card) + n(facets.paylater),
         providers: facets.providers.length,
@@ -128,6 +143,44 @@ router.get('/meta', async (req, res) => {
   } catch (err) {
     req.log.error({ err }, 'GET /deals/meta failed');
     res.status(500).json({ error: 'Failed to fetch metadata' });
+  }
+});
+
+// ─── GET /deals/best ──────────────────────────────────────────────────────────
+/**
+ * Ranks all offers for a chosen store/brand (or category) against a bill amount and wallet.
+ * Query params:
+ *   ?brand=Keells Super   (required if category is not provided)
+ *   ?category=Groceries   (optional if brand provided, or fallback)
+ *   ?bill=8000            (optional, whole LKR amount)
+ *   ?wallet=HNB:credit,Sampath:debit (optional compact wallet cards)
+ *   ?day=today            (optional, filter offers valid today)
+ */
+router.get('/best', async (req, res) => {
+  let q;
+  let wallet;
+  try {
+    q = buildBestQuery(req.query, { showSamples: showSamples() });
+    wallet = parseWallet(req.query.wallet);
+  } catch (err) {
+    if (err instanceof QueryError) return res.status(400).json({ error: err.message });
+    req.log.error({ err }, 'GET /deals/best: unexpected query error');
+    return res.status(500).json({ error: 'Failed to process request' });
+  }
+
+  try {
+    const deals = await Deal.find(q.match, HIDDEN_FIELDS).lean();
+    const ranked = rankOffers(deals, { bill: q.bill, wallet });
+    res.json({
+      brand: q.brand || null,
+      category: q.category || null,
+      bill: q.bill || null,
+      total: deals.length,
+      items: ranked,
+    });
+  } catch (err) {
+    req.log.error({ err }, 'GET /deals/best failed');
+    res.status(500).json({ error: 'Failed to calculate best deals' });
   }
 });
 

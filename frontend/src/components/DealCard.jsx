@@ -4,13 +4,14 @@
  */
 import Icon from './Icon';
 import {
-  benefitLabel, conditionsLabel, daysLabel, cardTypeLabel, expiryInfo, initials, brandHue,
+  benefitLabel, conditionsLabel, daysLabel, cardTypeLabel, expiryInfo, initials, brandHue, freshnessLabel,
 } from '../lib/format';
 
-export default function DealCard({ deal, onOpen }) {
+export default function DealCard({ deal, inWallet = false, onOpen }) {
   const expiry = expiryInfo(deal.validUntil);
   const conditions = conditionsLabel(deal);
   const isPayLater = deal.providerType === 'bnpl' || deal.offerType === 'instalment';
+  const freshness = freshnessLabel(deal);
 
   return (
     <article className="deal">
@@ -24,6 +25,13 @@ export default function DealCard({ deal, onOpen }) {
           <h3 className="deal__brand">{deal.brand}</h3>
           <span className="deal__category">{deal.category}</span>
         </div>
+        {freshness === 'new' && <span className="badge badge--new" title="Discovered recently">New</span>}
+        {freshness === 'updated' && <span className="badge badge--updated" title="Offer details recently updated">Updated</span>}
+        {inWallet && (
+          <span className="badge badge--in-wallet" title="Card in your wallet">
+            <Icon name="check" size={11} /> Wallet
+          </span>
+        )}
         {deal.source === 'sample' && <span className="badge badge--sample" title="Local sample data">Sample</span>}
       </header>
 

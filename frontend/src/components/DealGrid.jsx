@@ -16,8 +16,16 @@ function Skeleton() {
   );
 }
 
-export default function DealGrid({ state, onOpen, onRetry, onReset, onLoadMore }) {
+export default function DealGrid({ state, wallet = [], onOpen, onRetry, onReset, onLoadMore }) {
   const { items, total, loading, loadingMore, error, page, pages } = state;
+
+  const isDealInWallet = (deal) => {
+    if (!wallet || wallet.length === 0) return false;
+    return wallet.some(
+      (c) => c.bank.toLowerCase() === deal.bank?.toLowerCase() &&
+             (deal.cardType === 'both' || deal.cardType === c.type)
+    );
+  };
 
   if (error && !loading && items.length === 0) {
     return (
@@ -59,7 +67,14 @@ export default function DealGrid({ state, onOpen, onRetry, onReset, onLoadMore }
         Showing <strong>{items.length}</strong> of {total} offer{total === 1 ? '' : 's'}
       </p>
       <div className={`grid ${loading ? 'is-refreshing' : ''}`}>
-        {items.map((deal) => <DealCard key={deal._id} deal={deal} onOpen={onOpen} />)}
+        {items.map((deal) => (
+          <DealCard
+            key={deal._id}
+            deal={deal}
+            inWallet={isDealInWallet(deal)}
+            onOpen={onOpen}
+          />
+        ))}
       </div>
       {page < pages && (
         <div className="results__more">

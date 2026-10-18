@@ -21,6 +21,14 @@ describe('API Smoke Test', () => {
     expect(res.statusCode).toBe(503);
     expect(res.body).toHaveProperty('db', false);
   });
+
+  it('GET /status should return system status with driftGuard info', async () => {
+    const res = await request(app).get('/status');
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toHaveProperty('status');
+    expect(res.body).toHaveProperty('driftGuard');
+    expect(res.body.driftGuard).toHaveProperty('active', true);
+  });
 });
 
 describe('Security hardening', () => {
@@ -51,6 +59,14 @@ describe('Security hardening', () => {
   it('rejects malformed deal ids', async () => {
     const res = await request(app).get('/deals/not-an-id');
     expect(res.statusCode).toBe(400);
+  });
+
+  it('validates /deals/best params', async () => {
+    const noParams = await request(app).get('/deals/best');
+    expect(noParams.statusCode).toBe(400);
+
+    const badBill = await request(app).get('/deals/best?brand=Keells&bill=-50');
+    expect(badBill.statusCode).toBe(400);
   });
 });
 

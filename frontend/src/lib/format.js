@@ -99,3 +99,17 @@ export function brandHue(name = '') {
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) % 360;
   return h;
 }
+
+/** Determines if a deal was discovered or changed recently ('new' | 'updated' | null) */
+export function freshnessLabel(deal, now = Date.now()) {
+  if (!deal) return null;
+  const twoDaysMs = 48 * 60 * 60 * 1000;
+  if (deal.firstSeenAt && (now - new Date(deal.firstSeenAt).getTime() < twoDaysMs)) {
+    return 'new';
+  }
+  if (deal.lastChangedAt && (now - new Date(deal.lastChangedAt).getTime() < twoDaysMs)) {
+    return 'updated';
+  }
+  return null;
+}
+

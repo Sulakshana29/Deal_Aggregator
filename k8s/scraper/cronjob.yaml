@@ -8,9 +8,10 @@ metadata:
     tier: batch
 spec:
   # ── Schedule ────────────────────────────────────────────────────────────────
-  # Run every 6 hours (at 00:00, 06:00, 12:00, 18:00 UTC)
+  # Run every 12 hours (at 00:00 and 12:00 UTC) — matches the scraper's
+  # User-Agent ("runs every 12h") and keeps load on mypromo.lk low
   # Cron format: minute  hour  day-of-month  month  day-of-week
-  schedule: "0 */6 * * *"
+  schedule: "0 */12 * * *"
 
   # ── Job History ─────────────────────────────────────────────────────────────
   successfulJobsHistoryLimit: 3     # keep last 3 successful runs for logs

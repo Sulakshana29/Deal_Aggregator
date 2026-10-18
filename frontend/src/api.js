@@ -29,3 +29,17 @@ export function fetchMeta(signal) {
 export function fetchDeal(id, signal) {
   return getJSON(`/deals/${encodeURIComponent(id)}`, signal);
 }
+
+/** params: { brand, category, bill, wallet, day } */
+export function fetchBest(params, signal) {
+  const q = new URLSearchParams();
+  Object.entries(params).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && v !== '') q.set(k, String(v));
+  });
+  return getJSON(`/deals/best?${q}`, signal);
+}
+
+export function fetchStatus(signal) {
+  return getJSON('/status', signal);
+}
+

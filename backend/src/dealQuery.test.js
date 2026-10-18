@@ -75,7 +75,44 @@ describe('buildDealQuery', () => {
     [{ limit: '-1' }],
     [{ page: '2abc' }],
     [{ search: 'x'.repeat(101) }],
+    [{ wallet: 'InvalidFormat' }],
   ])('rejects invalid input %o', (query) => {
     expect(() => buildDealQuery(query)).toThrow(QueryError);
   });
+
+  it('filters by wallet cards', () => {
+    const q = buildDealQuery({ wallet: 'HNB:credit,Commercial Bank:debit' }, { now: NOW });
+    const orCondition = q.match.$and.find((c) => c.$or && c.$or[0].bank === 'HNB');
+    expect(orCondition).toBeDefined();
+    expect(orCondition.$or).toHaveLength(2);
+    expect(orCondition.$or[0]).toEqual({ bank: 'HNB', cardType: { $in: ['credit', 'both'] } });
+    expect(orCondition.$or[1]).toEqual({ bank: 'Commercial Bank', cardType: { $in: ['debit', 'both'] } });
+  });
+
+  it('filters by day=today', () => {
+    const q = buildDealQuery({ day: 'today' }, { now: NOW });
+    const dayCondition = q.match.$and.find((c) => c.$or && c.$or[0].validDays);
+    expect(dayCondition).toBeDefined();
+  });
 });
+
+describe('buildBestQuery', () => {
+  const { buildBestQuery } = require('./dealQuery');
+
+  it('requires brand or category', () => {
+    expect(() => buildBestQuery({}, { now: NOW })).toThrow(QueryError);
+  });
+
+  it('builds query for brand with bill', () => {
+    const q = buildBestQuery({ brand: 'Keells Super', bill: '5000' }, { now: NOW });
+    expect(q.brand).toBe('Keells Super');
+    expect(q.bill).toBe(5000);
+    expect(q.match.$and).toContainEqual({ brand: 'Keells Super' });
+  });
+
+  it('rejects invalid bill amounts', () => {
+    expect(() => buildBestQuery({ brand: 'Keells Super', bill: '-10' })).toThrow(QueryError);
+    expect(() => buildBestQuery({ brand: 'Keells Super', bill: 'abc' })).toThrow(QueryError);
+  });
+});
+

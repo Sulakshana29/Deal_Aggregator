@@ -10,10 +10,18 @@ const escapeRegex = require('./utils/escapeRegex');
 const MODES = ['card', 'paylater'];
 const SORTS = ['ending', 'discount', 'newest'];
 const CARD_TYPES = ['credit', 'debit'];
+const DAYS = ['today'];
 const DEFAULT_LIMIT = 24;
 const MAX_LIMIT = 50;
 const MAX_SEARCH_LENGTH = 100;
 const MAX_PAGE = 1000;
+const MAX_NAME_LENGTH = 80;        // brand / category / bank names
+const MAX_WALLET_CARDS = 20;
+const MAX_BILL = 10000000;         // LKR 10M — anything bigger is not a shopping bill
+
+// Sri Lanka is UTC+05:30 all year (no DST), so "today" is a fixed offset away
+const COLOMBO_OFFSET_MS = 330 * 60 * 1000;
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
 class QueryError extends Error {}
 
@@ -34,6 +42,63 @@ function positiveInt(value, name, fallback, max) {
   if (v === undefined) return fallback;
   if (!/^\d+$/.test(v) || Number(v) < 1) throw new QueryError(`"${name}" must be a positive integer`);
   return Math.min(Number(v), max);
+}
+
+/** An exact-match name (brand, category, provider) with a length limit. */
+function name(value, field) {
+  const v = str(value);
+  if (v !== undefined && v.length > MAX_NAME_LENGTH) {
+    throw new QueryError(`"${field}" must be at most ${MAX_NAME_LENGTH} characters`);
+  }
+  return v;
+}
+
+/** Weekday name in Sri Lanka right now, e.g. "Friday". */
+function colomboWeekday(now = new Date()) {
+  return WEEKDAYS[new Date(now.getTime() + COLOMBO_OFFSET_MS).getUTCDay()];
+}
+
+/**
+ * parseWallet("HNB:credit,Sampath Bank:debit") → [{ bank, type }]
+ * The wallet lives in the browser; it is sent as a compact list of bank:cardType.
+ */
+function parseWallet(value) {
+  const v = str(value);
+  if (v === undefined) return undefined;
+  const entries = v.split(',').map((s) => s.trim()).filter(Boolean);
+  if (entries.length === 0) return undefined;
+  if (entries.length > MAX_WALLET_CARDS) {
+    throw new QueryError(`"wallet" can hold at most ${MAX_WALLET_CARDS} cards`);
+  }
+  return entries.map((entry) => {
+    const i = entry.lastIndexOf(':');
+    const bank = i > 0 ? entry.slice(0, i).trim() : '';
+    const type = i > 0 ? entry.slice(i + 1).trim() : '';
+    if (!bank || bank.length > MAX_NAME_LENGTH || !CARD_TYPES.includes(type)) {
+      throw new QueryError('"wallet" must look like "HNB:credit,Sampath Bank:debit"');
+    }
+    return { bank, type };
+  });
+}
+
+/** Optional bill amount in LKR (whole rupees). */
+function parseBill(value) {
+  const v = str(value);
+  if (v === undefined) return undefined;
+  if (!/^\d+$/.test(v) || Number(v) < 1 || Number(v) > MAX_BILL) {
+    throw new QueryError(`"bill" must be a whole amount between 1 and ${MAX_BILL}`);
+  }
+  return Number(v);
+}
+
+/** An offer matches a wallet card if the bank matches and it accepts that card type. */
+function walletFilter(cards) {
+  return { $or: cards.map((c) => ({ bank: c.bank, cardType: { $in: [c.type, 'both'] } })) };
+}
+
+/** Offers with no listed days are valid every day. */
+function dayFilter(weekday) {
+  return { $or: [{ validDays: { $size: 0 } }, { validDays: { $exists: false } }, { validDays: weekday }] };
 }
 
 /** Start of today (UTC). An offer whose validUntil is today is still valid today. */
@@ -67,8 +132,11 @@ function buildDealQuery(query = {}, options = {}) {
   const mode = oneOf(query.mode, MODES, 'mode');
   const sort = oneOf(query.sort, SORTS, 'sort') || 'ending';
   const cardType = oneOf(query.cardType, CARD_TYPES, 'cardType');
-  const category = str(query.category);
-  const provider = str(query.provider);
+  const day = oneOf(query.day, DAYS, 'day');
+  const category = name(query.category, 'category');
+  const provider = name(query.provider, 'provider');
+  const brand = name(query.brand, 'brand');
+  const wallet = parseWallet(query.wallet);
   const search = str(query.search);
   const page = positiveInt(query.page, 'page', 1, MAX_PAGE);
   const limit = positiveInt(query.limit, 'limit', DEFAULT_LIMIT, MAX_LIMIT);
@@ -79,7 +147,10 @@ function buildDealQuery(query = {}, options = {}) {
 
   const conditions = [liveFilter(options), modeFilter(mode)];
   if (category) conditions.push({ category });
+  if (brand) conditions.push({ brand });
   if (provider) conditions.push({ bank: provider });
+  if (wallet) conditions.push(walletFilter(wallet));
+  if (day) conditions.push(dayFilter(colomboWeekday(options.now)));
   // An offer for "both" card types is valid for credit and for debit holders
   if (cardType) conditions.push({ cardType: { $in: [cardType, 'both'] } });
   if (search) {
@@ -99,6 +170,24 @@ function buildDealQuery(query = {}, options = {}) {
   return { match, sort: SORT_STAGES[sort], page, limit };
 }
 
+/**
+ * buildBestQuery(query, options) → { match, bill, brand, category }
+ * For GET /deals/best: every live offer at one store (or in one category),
+ * which the route then ranks by estimated saving.
+ */
+function buildBestQuery(query = {}, options = {}) {
+  const brand = name(query.brand, 'brand');
+  const category = name(query.category, 'category');
+  const day = oneOf(query.day, DAYS, 'day');
+  const bill = parseBill(query.bill);
+  if (!brand && !category) throw new QueryError('"brand" or "category" is required');
+
+  const conditions = [liveFilter(options), brand ? { brand } : { category }];
+  if (day) conditions.push(dayFilter(colomboWeekday(options.now)));
+  return { match: { $and: conditions }, bill, brand, category };
+}
+
 module.exports = {
-  buildDealQuery, liveFilter, modeFilter, startOfDay, QueryError, MAX_LIMIT, DEFAULT_LIMIT,
+  buildDealQuery, buildBestQuery, liveFilter, modeFilter, startOfDay, colomboWeekday, parseWallet,
+  QueryError, MAX_LIMIT, DEFAULT_LIMIT,
 };

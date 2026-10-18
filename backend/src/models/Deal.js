@@ -152,7 +152,7 @@ const dealSchema = new mongoose.Schema(
       default: false,
     },
 
-    // ── Data quality ───────────────────────────────────────────────────────
+    // ── Data quality & change tracking ────────────────────────────────────
     isActive: {
       type: Boolean,
       default: true,
@@ -164,6 +164,24 @@ const dealSchema = new mongoose.Schema(
       type: Date,
       default: Date.now,
       // Updated every time the scraper confirms this deal is still live
+    },
+
+    contentHash: {
+      type: String,
+      default: null,
+      // SHA-256 hash of core fields to detect real changes vs cosmetic re-scrapes
+    },
+
+    firstSeenAt: {
+      type: Date,
+      default: Date.now,
+      // When the deal was first scraped into the system
+    },
+
+    lastChangedAt: {
+      type: Date,
+      default: Date.now,
+      // Updated only when contentHash changes
     },
 
     // ── Source tracking ────────────────────────────────────────────────────

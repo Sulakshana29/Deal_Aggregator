@@ -27,6 +27,7 @@
 
 require('dotenv').config();
 
+const crypto   = require('crypto');
 const axios    = require('axios');
 const cheerio  = require('cheerio');
 const mongoose = require('mongoose');
@@ -94,6 +95,9 @@ const dealSchema = new mongoose.Schema(
     isStackable:   { type: Boolean, default: false },
     isActive:      { type: Boolean, default: true },
     lastVerified:  { type: Date,   default: Date.now },
+    contentHash:   { type: String, default: null },
+    firstSeenAt:   { type: Date,   default: Date.now },
+    lastChangedAt: { type: Date,   default: Date.now },
     source:        { type: String, default: 'scraped' },
     externalId:    { type: String, default: null },
     scrapedFrom:   { type: String, default: null },
@@ -106,7 +110,28 @@ dealSchema.index(
   { unique: true, partialFilterExpression: { externalId: { $type: 'string' } } }
 );
 
-const Deal =mongoose.models.Deal || mongoose.model('Deal', dealSchema);
+const Deal = mongoose.models.Deal || mongoose.model('Deal', dealSchema);
+
+const scrapeRunSchema = new mongoose.Schema(
+  {
+    startedAt:   { type: Date, default: Date.now },
+    completedAt: { type: Date, default: Date.now },
+    durationMs:  { type: Number, default: 0 },
+    pagesTotal:  { type: Number, default: 0 },
+    pagesOk:     { type: Number, default: 0 },
+    offersFound: { type: Number, default: 0 },
+    newInserts:  { type: Number, default: 0 },
+    updated:     { type: Number, default: 0 },
+    deactivated: { type: Number, default: 0 },
+    failures:    { type: Number, default: 0 },
+    status:      { type: String, enum: ['ok', 'degraded', 'failed'], default: 'ok' },
+    notes:       { type: String, default: '' },
+  },
+  { timestamps: true }
+);
+scrapeRunSchema.index({ completedAt: -1, status: 1 });
+
+const ScrapeRun = mongoose.models.ScrapeRun || mongoose.model('ScrapeRun', scrapeRunSchema);
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -243,33 +268,88 @@ async function scrapePage({ url, category }) {
 }
 
 /**
- * upsertDeal(deal) — insert or update keyed by mypromo.lk's promotion id,
- * so the same offer seen on two pages or two runs is stored once.
+ * Computes a stable hash of the core offer fields to detect real content changes.
  */
-function upsertDeal(deal) {
-  return Deal.findOneAndUpdate(
-    { source: 'scraped', externalId: deal.externalId },
-    { $set: { ...deal, lastVerified: new Date() } },
-    { upsert: true, new: true, setDefaultsOnInsert: true, includeResultMetadata: true }
-  );
+function computeContentHash(deal) {
+  const payload = JSON.stringify({
+    b: deal.brand,
+    t: deal.discountText,
+    k: deal.bank,
+    v: deal.discountValue,
+    o: deal.offerType,
+    c: deal.cardType,
+    u: deal.validUntil ? new Date(deal.validUntil).toISOString().split('T')[0] : '',
+    d: deal.validDays ? [...deal.validDays].sort() : [],
+    m: deal.minSpend || 0,
+    x: deal.maxDiscount || 0,
+  });
+  return crypto.createHash('sha256').update(payload).digest('hex').slice(0, 16);
+}
+
+/**
+ * upsertDeal(deal) — insert or update keyed by mypromo.lk's promotion id.
+ * Tracks firstSeenAt and lastChangedAt based on contentHash diffs.
+ */
+async function upsertDeal(deal) {
+  const hash = computeContentHash(deal);
+  const now = new Date();
+
+  const existing = await Deal.findOne({ source: 'scraped', externalId: deal.externalId });
+  if (!existing) {
+    const doc = new Deal({
+      ...deal,
+      contentHash: hash,
+      firstSeenAt: now,
+      lastChangedAt: now,
+      lastVerified: now,
+      isActive: true,
+    });
+    await doc.save();
+    return { inserted: true, updated: false };
+  }
+
+  const hasChanged = existing.contentHash !== hash;
+  existing.set({
+    ...deal,
+    contentHash: hash,
+    lastVerified: now,
+    isActive: true,
+  });
+
+  if (hasChanged) {
+    existing.lastChangedAt = now;
+  }
+
+  await existing.save();
+  return { inserted: false, updated: hasChanged };
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
 async function main() {
   const runStartedAt = new Date();
   console.log('═══════════════════════════════════════════════════');
-  console.log('  Deal Aggregator — Scraper Run');
+  console.log('  DealVault Scraper Run (with Drift Guard)');
   console.log(`  Started : ${runStartedAt.toISOString()}`);
   console.log(`  Target  : ${SCRAPE_PAGES.length} page(s) on mypromo.lk`);
   console.log('═══════════════════════════════════════════════════');
 
   try {
     await mongoose.connect(MONGO_URI);
-    // Log only host/db — MONGO_URI contains credentials
     console.log(`\n✅ MongoDB connected: ${mongoose.connection.host}/${mongoose.connection.name}`);
   } catch (err) {
     console.error(`\n❌ MongoDB connection failed: ${err.message}`);
     process.exit(1);
+  }
+
+  // Fetch the last healthy scrape run for drift guard baseline comparison
+  let lastGoodRun = null;
+  try {
+    lastGoodRun = await ScrapeRun.findOne({ status: 'ok' }).sort({ completedAt: -1 }).lean();
+    if (lastGoodRun) {
+      console.log(`  📊 Baseline from previous run: ${lastGoodRun.offersFound} offers on ${lastGoodRun.completedAt.toISOString()}`);
+    }
+  } catch (err) {
+    console.warn(`  ⚠️ Could not query previous scrape run: ${err.message}`);
   }
 
   let pagesOk = 0;
@@ -279,16 +359,16 @@ async function main() {
   let totalFailed = 0;
 
   for (const [i, page] of SCRAPE_PAGES.entries()) {
-    if (i > 0) await sleep(PAGE_DELAY_MS); // be polite to mypromo.lk
+    if (i > 0) await sleep(PAGE_DELAY_MS); // politeness delay
     const { ok, deals } = await scrapePage(page);
     if (ok) pagesOk++;
     totalFound += deals.length;
 
     for (const deal of deals) {
       try {
-        const res = await upsertDeal(deal);
-        if (res.lastErrorObject && res.lastErrorObject.upserted) totalInserted++;
-        else totalUpdated++;
+        const { inserted, updated } = await upsertDeal(deal);
+        if (inserted) totalInserted++;
+        else if (updated) totalUpdated++;
       } catch (dbErr) {
         console.error(`  ❌ DB upsert failed for "${deal.brand}": ${dbErr.message}`);
         totalFailed++;
@@ -296,30 +376,79 @@ async function main() {
     }
   }
 
-  // ── Deactivate offers that have disappeared from mypromo.lk ────────────────
-  // Only after a healthy run: if most pages failed, "not seen" means "couldn't
-  // check", not "gone" — deactivating then would empty the site during an outage.
+  // ── DRIFT GUARD & DEACTIVATION CHECK ─────────────────────────────────────────
+  // Protect catalog from accidental mass-deactivations caused by site layout changes
   let deactivated = 0;
-  const healthy = pagesOk >= Math.ceil(SCRAPE_PAGES.length / 2) && totalFound > 0;
-  if (healthy) {
+  let status = 'ok';
+  let notes = [];
+
+  const minHealthyPages = Math.ceil(SCRAPE_PAGES.length / 2);
+  const pagesHealthy = pagesOk >= minHealthyPages && totalFound > 0;
+
+  let driftTriggered = false;
+  if (lastGoodRun && lastGoodRun.offersFound >= 20) {
+    const minExpectedOffers = Math.floor(lastGoodRun.offersFound * 0.5); // 50% threshold
+    if (totalFound < minExpectedOffers) {
+      driftTriggered = true;
+      status = 'degraded';
+      const msg = `DRIFT GUARD ALERT: Offers found (${totalFound}) dropped by >50% vs last good run (${lastGoodRun.offersFound}). Markup change suspected!`;
+      notes.push(msg);
+      console.warn(`\n🛡️  ${msg}`);
+    }
+  }
+
+  if (!pagesHealthy) {
+    status = pagesOk === 0 ? 'failed' : 'degraded';
+    const msg = `Unhealthy run: ${pagesOk}/${SCRAPE_PAGES.length} pages succeeded.`;
+    notes.push(msg);
+    console.warn(`\n⚠️  ${msg}`);
+  }
+
+  if (pagesHealthy && !driftTriggered) {
     const res = await Deal.updateMany(
       { source: 'scraped', isActive: true, lastVerified: { $lt: runStartedAt } },
       { $set: { isActive: false } }
     );
     deactivated = res.modifiedCount;
   } else {
-    console.warn('\n⚠️  Unhealthy run — skipping deactivation of unseen offers.');
+    console.warn('🛡️  Skipping deactivation of unseen offers to protect live data.');
+  }
+
+  const durationMs = Date.now() - runStartedAt.getTime();
+
+  // ── Save ScrapeRun Audit Log ─────────────────────────────────────────────────
+  try {
+    const run = new ScrapeRun({
+      startedAt: runStartedAt,
+      completedAt: new Date(),
+      durationMs,
+      pagesTotal: SCRAPE_PAGES.length,
+      pagesOk,
+      offersFound: totalFound,
+      newInserts: totalInserted,
+      updated: totalUpdated,
+      deactivated,
+      failures: totalFailed,
+      status,
+      notes: notes.join(' | '),
+    });
+    await run.save();
+    console.log(`\n📝 Scrape run logged to database (id: ${run._id}, status: ${status})`);
+  } catch (err) {
+    console.error(`❌ Failed to record ScrapeRun: ${err.message}`);
   }
 
   console.log('\n═══════════════════════════════════════════════════');
   console.log('  Scrape Run Summary');
   console.log('─────────────────────────────────────────────────');
+  console.log(`  Status         : ${status.toUpperCase()} ${driftTriggered ? '(Drift Guard Active)' : ''}`);
   console.log(`  Pages OK       : ${pagesOk}/${SCRAPE_PAGES.length}`);
   console.log(`  Offers found   : ${totalFound}`);
   console.log(`  New inserts    : ${totalInserted}`);
-  console.log(`  Updated        : ${totalUpdated}`);
+  console.log(`  Content updated: ${totalUpdated}`);
   console.log(`  Deactivated    : ${deactivated}`);
   console.log(`  DB failures    : ${totalFailed}`);
+  console.log(`  Duration       : ${(durationMs / 1000).toFixed(1)}s`);
   console.log(`  Completed      : ${new Date().toISOString()}`);
   console.log('═══════════════════════════════════════════════════');
 
