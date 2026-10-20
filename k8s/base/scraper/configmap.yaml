@@ -6,6 +6,4 @@ metadata:
   labels:
     app: scraper
 data:
-  # Same hostname as MongoDB Service name
-  MONGO_URI: "mongodb://mongodb:27017/deal-aggregator"
   RETRY_DELAY_MS: "3000"

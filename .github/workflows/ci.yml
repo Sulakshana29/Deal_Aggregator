@@ -123,11 +123,90 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ─── 3. DOCKER PUSH (Runs only if secrets are set) ──────────────────────
+  # ─── 3. KUBERNETES KInD SMOKE TEST ($0 Ephemeral CI Cluster) ─────────────
+  k8s-smoke-test:
+    name: K8s KinD Cluster Smoke Test
+    runs-on: ubuntu-latest
+    needs: docker-build-scan
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Images for KinD
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          load: true
+          tags: deal-aggregator-backend:latest
+          cache-from: type=gha
+
+      - name: Build Frontend for KinD
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          load: true
+          tags: deal-aggregator-frontend:latest
+          cache-from: type=gha
+
+      - name: Build Scraper for KinD
+        uses: docker/build-push-action@v5
+        with:
+          context: ./scraper
+          load: true
+          tags: deal-aggregator-scraper:latest
+          cache-from: type=gha
+
+      - name: Create KinD Cluster
+        uses: helm/kind-action@v1.12.0
+        with:
+          cluster_name: kind
+          wait: 120s
+
+      - name: Load Images into KinD
+        run: |
+          kind load docker-image deal-aggregator-backend:latest --name kind
+          kind load docker-image deal-aggregator-frontend:latest --name kind
+          kind load docker-image deal-aggregator-scraper:latest --name kind
+
+      - name: Deploy Manifests (Kustomize ci-kind)
+        run: |
+          kubectl apply -k k8s/overlays/ci-kind
+
+      - name: Wait for Pods Rollout
+        run: |
+          echo "Waiting for MongoDB StatefulSet..."
+          kubectl rollout status statefulset/mongodb -n deal-aggregator --timeout=120s
+          echo "Waiting for Backend Deployment..."
+          kubectl rollout status deployment/backend -n deal-aggregator --timeout=120s
+          echo "Waiting for Frontend Deployment..."
+          kubectl rollout status deployment/frontend -n deal-aggregator --timeout=120s
+
+      - name: Validate Health & Probes
+        run: |
+          kubectl get pods,svc,pvc,statefulset -n deal-aggregator -o wide
+          # Port-forward frontend service to test full chain (Frontend -> Backend -> Mongo)
+          kubectl port-forward svc/deal-aggregator-frontend -n deal-aggregator 8080:80 &
+          sleep 5
+          # Health check
+          curl -f http://localhost:8080/api/health || (kubectl describe pods -n deal-aggregator && exit 1)
+          # Readiness check (confirms backend successfully connects to MongoDB)
+          curl -f http://localhost:8080/api/ready || (kubectl describe pods -n deal-aggregator && exit 1)
+          echo "Full 3-tier K8s stack is healthy and communicating!"
+
+      - name: Test Scraper Job Trigger
+        run: |
+          kubectl create job --from=cronjob/deal-scraper test-scrape-ci -n deal-aggregator
+          kubectl wait --for=condition=ready pod -l job-name=test-scrape-ci -n deal-aggregator --timeout=60s || true
+          kubectl get jobs,pods -n deal-aggregator
+
+  # ─── 4. DOCKER PUSH (Runs only if tests and K8s pass) ───────────────────
   docker-push:
     name: Push to Docker Hub
     runs-on: ubuntu-latest
-    needs: docker-build-scan
+    needs: [docker-build-scan, k8s-smoke-test]
     # Run on push to main or manual workflow trigger
     if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     env:

@@ -1,0 +1,134 @@
+# Zero-trust networking. Pods are open to everyone by default in Kubernetes;
+# these policies flip that: deny everything, then allow only the flows below.
+#
+#   Browser/Ingress ─▶ frontend:8080 ─▶ backend:5000 ─▶ mongodb:27017 ◀─ scraper
+#                                                                          └─▶ internet :443
+#
+# NOTE: policies are only ENFORCED if the cluster's CNI supports them
+# (kind ≥ 0.24 kindnet, Calico, Cilium). Minikube needs `--cni=calico`.
+
+# 1) Default deny: no pod in the namespace may receive or send traffic
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-all
+  namespace: deal-aggregator
+spec:
+  podSelector: {}
+  policyTypes: [Ingress, Egress]
+---
+# 2) Everyone may resolve DNS (otherwise service names like "mongodb" break)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-dns-egress
+  namespace: deal-aggregator
+spec:
+  podSelector: {}
+  policyTypes: [Egress]
+  egress:
+    - ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+---
+# 3) frontend: accepts traffic from outside (NodePort / ingress / port-forward),
+#    may only call the backend
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: frontend-policy
+  namespace: deal-aggregator
+spec:
+  podSelector:
+    matchLabels:
+      app: frontend
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - ports:
+        - { protocol: TCP, port: 8080 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: backend
+      ports:
+        - { protocol: TCP, port: 5000 }
+---
+# 4) backend: only the frontend may call it, it may only talk to MongoDB
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: backend-policy
+  namespace: deal-aggregator
+spec:
+  podSelector:
+    matchLabels:
+      app: backend
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: frontend
+      ports:
+        - { protocol: TCP, port: 5000 }
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: mongodb
+      ports:
+        - { protocol: TCP, port: 27017 }
+---
+# 5) mongodb: reachable ONLY from backend and scraper; it initiates no connections
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mongodb-policy
+  namespace: deal-aggregator
+spec:
+  podSelector:
+    matchLabels:
+      app: mongodb
+  policyTypes: [Ingress, Egress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app: backend
+        - podSelector:
+            matchLabels:
+              app: scraper
+      ports:
+        - { protocol: TCP, port: 27017 }
+---
+# 6) scraper: may write to MongoDB and fetch the public web (HTTP/HTTPS only),
+#    but never reach other in-cluster/private addresses
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: scraper-policy
+  namespace: deal-aggregator
+spec:
+  podSelector:
+    matchLabels:
+      app: scraper
+  policyTypes: [Ingress, Egress]
+  # no ingress rules → nothing can connect to the scraper
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: mongodb
+      ports:
+        - { protocol: TCP, port: 27017 }
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+      ports:
+        - { protocol: TCP, port: 443 }
+        - { protocol: TCP, port: 80 }

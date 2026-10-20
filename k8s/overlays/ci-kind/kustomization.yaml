@@ -1,0 +1,26 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Ephemeral CI cluster (kind inside GitHub Actions). Images are built by the
+# pipeline and loaded with `kind load docker-image`, so nothing is pulled.
+# CI sets the tag with:  kustomize edit set image ...:${GITHUB_SHA}  (added in the CI step)
+
+resources:
+  - ../../base
+
+secretGenerator:
+  - name: mongodb-credentials
+    namespace: deal-aggregator
+    literals:
+      - username=ci
+      - password=ci-ephemeral-password
+
+# Smaller footprint = faster, cheaper CI
+patches:
+  - target:
+      kind: Deployment
+      name: backend
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1

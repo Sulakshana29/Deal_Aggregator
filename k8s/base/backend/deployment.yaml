@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: deal-aggregator
+  labels:
+    app: backend
+    tier: application
+spec:
+  replicas: 2              # 2 replicas = horizontal scaling + zero-downtime rollouts
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+        tier: application
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000      # the unprivileged "node" user from the Dockerfile
+        runAsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          # Overlays rewrite this via the `images:` transformer (local tag, CI sha, registry)
+          image: deal-aggregator-backend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 5000
+          envFrom:
+            - configMapRef:
+                name: backend-config
+          env:
+            # Credentials come from a Secret; MONGO_URI is assembled from them.
+            # $(VAR) expansion only works for variables declared EARLIER in this list.
+            - name: MONGO_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-credentials
+                  key: username
+            - name: MONGO_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-credentials
+                  key: password
+            - name: MONGO_URI
+              value: "mongodb://$(MONGO_USERNAME):$(MONGO_PASSWORD)@mongodb:27017/deal-aggregator?authSource=admin"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true   # a compromised process cannot write to the image
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          # Liveness: restart the pod if the process stops responding.
+          # Deliberately does NOT check MongoDB — restarting would not fix a DB outage.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          # Readiness: only receive traffic while /ready (MongoDB reachable) returns 200.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "250m"
+      volumes:
+        - name: tmp
+          emptyDir: {}

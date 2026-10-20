@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# The base is the single source of truth shared by every environment.
+# It deliberately contains NO secret and NO environment-specific values;
+# overlays supply the `mongodb-credentials` Secret, image tags and exposure.
+# Render:  kubectl kustomize k8s/overlays/local
+# Apply:   kubectl apply -k k8s/overlays/local
+
+resources:
+  - namespace.yaml          # first: everything else lives inside it
+
+  # Database tier
+  - mongodb/statefulset.yaml
+  - mongodb/service.yaml
+
+  # Application tier
+  - backend/configmap.yaml
+  - backend/deployment.yaml
+  - backend/service.yaml
+
+  # Presentation tier
+  - frontend/deployment.yaml
+  - frontend/service.yaml
+
+  # Batch tier
+  - scraper/configmap.yaml
+  - scraper/cronjob.yaml
+
+  # Zero-trust network rules
+  - networkpolicy.yaml

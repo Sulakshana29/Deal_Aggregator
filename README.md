@@ -160,7 +160,7 @@ flowchart LR
 | **Phase 1** | **Wallet & Smart Recommender:** Pure savings engine (`savings.js`), rupee calculator, `localStorage` wallet modal, and unified feed filters. | ✅ Done |
 | **Phase 2** | **Scraping Reliability & Drift Guard:** SHA-256 hashing, 50% drop safeguard, `ScrapeRun` audit logs, Prometheus gauges, and live status bar. | ✅ Done |
 | **Phase 3** | **Portfolio Refresh:** Interactive architecture diagrams, comprehensive DevSecOps documentation, and interview write-ups. | ✅ Done |
-| **Phase 4** | **Kubernetes Migration:** `k8s/base` + overlays with Kustomize, MongoDB StatefulSet, NetworkPolicies, PSA `restricted`, and KinD CI smoke test. | ⏳ Next |
+| **Phase 4** | **Kubernetes Migration:** `k8s/base` + overlays with Kustomize, MongoDB StatefulSet, NetworkPolicies, PSA `restricted`, and KinD CI smoke test. | ✅ Done |
 
 ---
 

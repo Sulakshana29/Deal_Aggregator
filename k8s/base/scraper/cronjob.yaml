@@ -1,0 +1,85 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: deal-scraper
+  namespace: deal-aggregator
+  labels:
+    app: scraper
+    tier: batch
+spec:
+  # Every 12 hours (00:00 and 12:00 UTC) — matches the scraper's User-Agent
+  # ("runs every 12h") and keeps load on mypromo.lk low.
+  # Cron format: minute  hour  day-of-month  month  day-of-week
+  schedule: "0 */12 * * *"
+
+  successfulJobsHistoryLimit: 3     # keep last 3 successful runs for logs
+  failedJobsHistoryLimit: 3         # keep last 3 failures for debugging
+
+  # Forbid: if the previous job is still running, skip this run
+  # (prevents duplicate scrapes + DB write conflicts)
+  concurrencyPolicy: Forbid
+
+  jobTemplate:
+    spec:
+      backoffLimit: 2               # retry a failed pod up to 2 times
+      activeDeadlineSeconds: 600    # kill the job after 10 minutes (network hang protection)
+      template:
+        metadata:
+          labels:
+            app: scraper
+        spec:
+          restartPolicy: Never      # one-shot job; retries are handled by backoffLimit
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: scraper
+              image: deal-aggregator-scraper:latest
+              imagePullPolicy: IfNotPresent
+              envFrom:
+                - configMapRef:
+                    name: scraper-config
+              env:
+                - name: MONGO_USERNAME
+                  valueFrom:
+                    secretKeyRef:
+                      name: mongodb-credentials
+                      key: username
+                - name: MONGO_PASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: mongodb-credentials
+                      key: password
+                - name: MONGO_URI
+                  value: "mongodb://$(MONGO_USERNAME):$(MONGO_PASSWORD)@mongodb:27017/deal-aggregator?authSource=admin"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+              resources:
+                requests:
+                  memory: "128Mi"
+                  cpu: "100m"
+                limits:
+                  memory: "256Mi"
+                  cpu: "200m"
+          volumes:
+            - name: tmp
+              emptyDir: {}
+
+# ── Useful kubectl commands ──────────────────────────────────────────────────
+# Watch CronJob status:
+#   kubectl get cronjob deal-scraper -n deal-aggregator -w
+#
+# Trigger manually (ad-hoc run):
+#   kubectl create job --from=cronjob/deal-scraper manual-scrape-$(date +%s) -n deal-aggregator
+#
+# View logs from last run:
+#   kubectl logs -l app=scraper -n deal-aggregator --tail=100

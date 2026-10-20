@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: deal-aggregator
+  labels:
+    app.kubernetes.io/name: deal-aggregator
+    app.kubernetes.io/part-of: deal-aggregator
+    # Pod Security Admission: the API server REJECTS any pod in this namespace that
+    # is not compliant with the "restricted" profile (non-root, no privilege
+    # escalation, all capabilities dropped, seccomp profile set).
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/audit: restricted
